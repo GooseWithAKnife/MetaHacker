@@ -1918,9 +1918,7 @@ Tabs["Internet"] = function(container)
                 { key = "ISP",       blurb = "Your Internet Service Provider" },
                 { key = "MSA",       blurb = "Metastruct Security Agency." },
                 { key = "PUZZLE_5",  blurb = "Fifth puzzle." },
-                { key = "WHOIS2",    blurb = "Second Whois (testing)",  ungated = true },
-                { key = "WHOIS3",    blurb = "Third Whois (testing)",  ungated = true },
-                { key = "WHOIS4",    blurb = "Fourth Whois (testing)", ungated = true },
+                { key = "WHOIS2",    blurb = "Second Whois" },
             },
             [2] = {
                 { key = "BANK2",     blurb = "Banking refined." },
