@@ -206,9 +206,45 @@ Handlers.install_toggle = function(ply, args)
     send_snapshot(ply, srv.id)
 end
 
+local IP_LOOKUP_WINDOW = 60
+local IP_LOOKUP_LIMIT = 30
+local IP_LOOKUP_AUTOBAN_HITS = 5
+local ip_lookup_log = {}
+local ip_lookup_strikes = {}
+
+local function check_ip_lookup_rate(ply)
+    local sid = ply:SteamID64()
+    local nowT = os.time()
+    local log = ip_lookup_log[sid] or {}
+    local fresh = {}
+    for _, t in ipairs(log) do
+        if (nowT - t) < IP_LOOKUP_WINDOW then fresh[#fresh + 1] = t end
+    end
+    fresh[#fresh + 1] = nowT
+    ip_lookup_log[sid] = fresh
+    if #fresh > IP_LOOKUP_LIMIT then
+        ip_lookup_strikes[sid] = (ip_lookup_strikes[sid] or 0) + 1
+        MH.DB.Query("UPDATE mh_players SET abuse_cmd_hits = COALESCE(abuse_cmd_hits, 0) + 1 WHERE sid64 = " ..
+            MH.DB.Esc(sid))
+        if MH.Api and MH.Api.LogAbuse then
+            MH.Api.LogAbuse(sid, "ip_sweep", #fresh .. " IP lookups in " .. IP_LOOKUP_WINDOW .. "s")
+        end
+        if ip_lookup_strikes[sid] >= IP_LOOKUP_AUTOBAN_HITS and not ply:IsSuperAdmin() then
+            MH.State.BanSid(sid, "Autoban: IP sweep (" .. ip_lookup_strikes[sid] .. " strikes)", "console")
+            send_notify(ply, "error", "You have been automatically banned for IP sweeping.")
+            MH.Log.warn("abuse", "autoban", sid .. " autobanned for IP sweep")
+        else
+            send_notify(ply, "error", "Rate limit: slow down the IP lookups.")
+        end
+        return false
+    end
+    return true
+end
+
 Handlers.scan_ip = function(ply, args)
     local ip = tostring(args.ip or "")
     if ip == "" then send_notify(ply, "error", "No IP") return end
+    if not check_ip_lookup_rate(ply) then return end
     local srv = MH.State.GetServersFor(ply:SteamID64())[1]
     if not srv then send_notify(ply, "error", "No server") return end
     local target = MH.DB.QueryRow("SELECT id FROM mh_servers WHERE ip = " .. MH.DB.Esc(ip))
@@ -346,15 +382,42 @@ Handlers.bank_collect = function(ply, args)
     send_snapshot(ply, 0)
 end
 
-local BTC_RATE = 81629
+local BTC_BUY_RATE = MH.Data.BtcBuyRate or 81650
+local BTC_SELL_RATE = MH.Data.BtcSellRate or 81624
+
+local function resolve_recipient(target)
+    target = tostring(target or ""):Trim()
+    if target == "" then return nil end
+    if target:match("^%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d$") then
+        local hit = MH.DB.QueryValue("SELECT sid64 FROM mh_players WHERE sid64 = " .. MH.DB.Esc(target))
+        if hit then return target end
+    end
+    local byNick = MH.DB.QueryValue("SELECT sid64 FROM mh_players WHERE nick = " .. MH.DB.Esc(target) .. " LIMIT 1")
+    if byNick then return byNick end
+    return nil
+end
+
+MH.BtcSessions = MH.BtcSessions or {}
+
+local function btc_logged_in(sid)
+    return MH.BtcSessions[sid] == true
+end
+
+local BTC_MIN_TX = 0.1
 
 Handlers.btc_buy = function(ply, args)
     local sid = ply:SteamID64()
+    if not btc_logged_in(sid) then send_notify(ply, "error", "Please login first") return end
     local cashSpend = math.floor(tonumber(args.cash or 0) or 0)
     if cashSpend <= 0 then send_notify(ply, "error", "Bad numbers") return end
+    if (cashSpend / BTC_BUY_RATE) < BTC_MIN_TX then
+        send_notify(ply, "error", "Minimum transaction is " .. BTC_MIN_TX .. " BTC ($" ..
+            MH.Data.FmtCash(math.ceil(BTC_BUY_RATE * BTC_MIN_TX)) .. ")")
+        return
+    end
     local p = MH.State.GetPlayer(sid)
     if (tonumber(p.cash) or 0) < cashSpend then send_notify(ply, "error", "Not enough cash") return end
-    local btc = cashSpend / BTC_RATE
+    local btc = cashSpend / BTC_BUY_RATE
     MH.State.SpendCash(sid, cashSpend,
         "Bitcoin purchase (" .. string.format("%.7f", btc) .. " BTC)", 0)
     MH.DB.Query("UPDATE mh_players SET bitcoin = bitcoin + " ..
@@ -393,11 +456,16 @@ end
 
 Handlers.btc_transfer = function(ply, args)
     local sid = ply:SteamID64()
+    if not btc_logged_in(sid) then send_notify(ply, "error", "Please login first") return end
     local to = resolve_recipient(args.to)
     if not to then send_notify(ply, "error", "Recipient not found") return end
     if to == sid then send_notify(ply, "error", "Cannot transfer to yourself") return end
     local amount = tonumber(args.amount or 0) or 0
     if amount <= 0 then send_notify(ply, "error", "Bad amount") return end
+    if amount < BTC_MIN_TX then
+        send_notify(ply, "error", "Minimum transaction is " .. BTC_MIN_TX .. " BTC")
+        return
+    end
     local p = MH.State.GetPlayer(sid)
     if (tonumber(p and p.bitcoin or 0) or 0) < amount then send_notify(ply, "error", "Not enough BTC") return end
     MH.DB.Query("UPDATE mh_players SET bitcoin = bitcoin - " .. string.format("%.7f", amount) ..
@@ -409,7 +477,22 @@ Handlers.btc_transfer = function(ply, args)
 end
 
 Handlers.btc_sell = function(ply, args)
-    send_notify(ply, "error", "BTC selling is disabled")
+    local sid = ply:SteamID64()
+    if not btc_logged_in(sid) then send_notify(ply, "error", "Please login first") return end
+    local amount = tonumber(args.amount or 0) or 0
+    if amount <= 0 then send_notify(ply, "error", "Bad amount") return end
+    if amount < BTC_MIN_TX then
+        send_notify(ply, "error", "Minimum transaction is " .. BTC_MIN_TX .. " BTC")
+        return
+    end
+    local p = MH.State.GetPlayer(sid)
+    if (tonumber(p and p.bitcoin or 0) or 0) < amount then send_notify(ply, "error", "Not enough BTC") return end
+    local cash = math.floor(amount * BTC_SELL_RATE)
+    MH.DB.Query("UPDATE mh_players SET bitcoin = bitcoin - " .. string.format("%.7f", amount) ..
+        " WHERE sid64 = " .. MH.DB.Esc(sid))
+    MH.State.AddCash(sid, cash, "Bitcoin sale (" .. string.format("%.7f", amount) .. " BTC)")
+    send_notify(ply, "ok", "Sold " .. string.format("%.7f", amount) .. " BTC for $" .. cash)
+    send_snapshot(ply, 0)
 end
 
 Handlers.doom_launch = function(ply, args)
@@ -474,10 +557,22 @@ end
 
 Handlers.virus_collect = function(ply, args)
     local sid = ply:SteamID64()
-    local cash, btc, visited = MH.Virus.CollectFor(sid)
+    local accNum = tostring(args.account or "")
+    local installed = tonumber(MH.DB.QueryValue(
+        "SELECT COUNT(*) FROM mh_software WHERE owner_sid = " .. MH.DB.Esc(sid) ..
+        " AND installed = 1 AND soft_type IN (8, 9, 20)")) or 0
+    if installed == 0 then
+        send_notify(ply, "warn", "No viruses installed to collect from")
+        return
+    end
+    local cash, btc, ready, total = MH.Virus.CollectFor(sid, accNum ~= "" and accNum or nil)
+    if total > 0 and ready == 0 then
+        send_notify(ply, "error", "All servers were ignored because they did not match the minimum collect time")
+        return
+    end
     if (tonumber(btc) or 0) > 0 then MH.State.AwardBadge(sid, "first_btc") end
     send_notify(ply, "ok", "Collected $" .. tostring(cash) .. " and " .. string.format("%.7f", btc) ..
-        " BTC from " .. visited .. " viruses")
+        " BTC from " .. ready .. " viruses")
     send_snapshot(ply, 0)
 end
 
@@ -612,6 +707,13 @@ Handlers.proc_complete = function(ply, args)
         end
         MH.DB.Query("UPDATE mh_players SET bitcoin = bitcoin - " .. string.format("%.7f", burn) ..
             " WHERE sid64 = " .. MH.DB.Esc(sid))
+        local wallet = MH.DB.QueryRow("SELECT address FROM mh_btc_wallets WHERE owner_sid = " .. MH.DB.Esc(sid))
+        local walletAddr = (wallet and wallet.address) and tostring(wallet.address) or "unknown"
+        local primary = MH.State.GetServersFor(sid)[1]
+        if primary then
+            MH.State.AppendLog(primary.id,
+                "localhost spent " .. string.format("%.7f", burn) .. " BTC to fast-finish process from wallet " .. walletAddr)
+        end
         MH.Proc.Complete(row.id)
         send_notify(ply, "ok", "Fast-finished (-0.5 BTC)")
     end
@@ -686,18 +788,6 @@ Handlers.soft_rename = function(ply, args)
     send_snapshot(ply, srv.id)
 end
 
-local function resolve_recipient(target)
-    target = tostring(target or ""):Trim()
-    if target == "" then return nil end
-    if target:match("^%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d$") then
-        local hit = MH.DB.QueryValue("SELECT sid64 FROM mh_players WHERE sid64 = " .. MH.DB.Esc(target))
-        if hit then return target end
-    end
-    local byNick = MH.DB.QueryValue("SELECT sid64 FROM mh_players WHERE nick = " .. MH.DB.Esc(target) .. " LIMIT 1")
-    if byNick then return byNick end
-    return nil
-end
-
 local MAIL_RATE_WINDOW = 60
 local MAIL_RATE_LIMIT = 5
 local MAIL_FLOOD_WINDOW = 600
@@ -707,6 +797,62 @@ local MAIL_SUBJECT_MAX = 120
 local mail_rate_log = {}
 local mail_flood_log = {}
 
+local MAIL_CAPTCHA_ICONS = {
+    house       = { "a home", "a dwelling", "a residence" },
+    car         = { "a vehicle", "an automobile", "a motor car" },
+    cup         = { "a drinking vessel", "a mug", "something you sip from" },
+    lightning   = { "a thunderbolt", "a spark", "a stroke of lightning" },
+    cake        = { "a birthday pastry", "something you blow candles on", "a frosted dessert" },
+    star        = { "a shining celestial body", "something you wish upon", "a five-point shape" },
+    heart       = { "a symbol of love", "the organ that beats", "a valentine shape" },
+    weather_sun = { "the daytime star", "something that gives us daylight", "the brightest thing in the sky" },
+    bell        = { "a bell", "a hanging ringer with a clapper inside", "a cartoon jingle bell" },
+    clock       = { "something that tells the time", "a timepiece", "something with hour and minute hands" },
+    key         = { "something that unlocks a door", "something that opens a lock", "the thing you turn in an ignition" },
+    book        = { "something you read", "a bound set of pages", "a novel" },
+}
+local MAIL_CAPTCHA_ICON_LIST = {}
+for name, _ in pairs(MAIL_CAPTCHA_ICONS) do MAIL_CAPTCHA_ICON_LIST[#MAIL_CAPTCHA_ICON_LIST + 1] = name end
+MH.MailCaptchas = MH.MailCaptchas or {}
+local MAIL_CAPTCHA_TTL = 180
+
+local function gen_captcha_token()
+    return util.CRC(tostring(os.time()) .. "_" .. tostring(math.random(1, 1e9)) .. "_" .. tostring(math.random(1, 1e9))) ..
+        util.CRC(tostring(SysTime()) .. "_" .. tostring(math.random(1, 1e9)))
+end
+
+local function issue_mail_captcha(ply)
+    local sid = ply:SteamID64()
+    local pool = {}
+    for i, name in ipairs(MAIL_CAPTCHA_ICON_LIST) do pool[i] = name end
+    for i = #pool, 2, -1 do
+        local j = math.random(i)
+        pool[i], pool[j] = pool[j], pool[i]
+    end
+    local choices = { pool[1], pool[2], pool[3], pool[4] }
+    local targetIdx = math.random(1, 4)
+    local targetName = choices[targetIdx]
+    local prompts = MAIL_CAPTCHA_ICONS[targetName] or { targetName }
+    local prompt = prompts[math.random(1, #prompts)]
+    local token = gen_captcha_token()
+    MH.MailCaptchas[sid] = {
+        token = token,
+        choices = choices,
+        target_idx = targetIdx,
+        stamp = os.time(),
+    }
+    net.Start(N.MailCaptcha)
+    net.WriteString(token)
+    net.WriteString(prompt)
+    net.WriteUInt(4, 8)
+    for _, name in ipairs(choices) do net.WriteString(name) end
+    net.Send(ply)
+end
+
+Handlers.mail_captcha_request = function(ply, args)
+    issue_mail_captcha(ply)
+end
+
 Handlers.mail_send = function(ply, args)
     local sid = ply:SteamID64()
     local mailBanned, mailBanReason = MH.State.IsMailBanned(sid)
@@ -714,6 +860,21 @@ Handlers.mail_send = function(ply, args)
         send_notify(ply, "error", "You are banned from sending mail: " .. (mailBanReason or ""))
         return
     end
+    local challenge = MH.MailCaptchas[sid]
+    local token = tostring(args.captcha_token or "")
+    local choiceIdx = tonumber(args.captcha_choice or 0) or 0
+    if not challenge or challenge.token ~= token or (os.time() - challenge.stamp) > MAIL_CAPTCHA_TTL then
+        send_notify(ply, "error", "Captcha expired. Please try again.")
+        issue_mail_captcha(ply)
+        return
+    end
+    if choiceIdx ~= challenge.target_idx then
+        send_notify(ply, "error", "Wrong captcha. Try again.")
+        MH.MailCaptchas[sid] = nil
+        issue_mail_captcha(ply)
+        return
+    end
+    MH.MailCaptchas[sid] = nil
     local nowT = os.time()
     local log = mail_rate_log[sid] or {}
     local fresh = {}
@@ -801,11 +962,46 @@ Handlers.internet_goto = function(ply, args)
     local sid = ply:SteamID64()
     local ip = tostring(args.ip or ""):Trim()
     if ip == "" then send_notify(ply, "error", "No IP") return end
-    local target = MH.DB.QueryRow("SELECT id FROM mh_servers WHERE ip = " .. MH.DB.Esc(ip))
+    if not check_ip_lookup_rate(ply) then return end
+    local target = MH.DB.QueryRow("SELECT id, name FROM mh_servers WHERE ip = " .. MH.DB.Esc(ip))
     if not target then send_notify(ply, "warn", "No reply from " .. ip) return end
     net_upsert(sid, tonumber(target.id), false)
     MH.State.MarkDiscovered(sid, tonumber(target.id))
     send_notify(ply, "ok", "Pointed browser at " .. ip)
+    send_snapshot(ply, 0)
+end
+
+Handlers.btc_internet_login = function(ply, args)
+    local sid = ply:SteamID64()
+    local ip = tostring(args.ip or "")
+    local addr = tostring(args.addr or "")
+    local key = tostring(args.key or "")
+    if addr == "" or key == "" then send_notify(ply, "error", "Missing credentials") return end
+    local target = MH.DB.QueryRow("SELECT id, name FROM mh_servers WHERE ip = " .. MH.DB.Esc(ip))
+    if not target or tostring(target.name) ~= "Bitcoin Market" then
+        send_notify(ply, "error", "Not a Bitcoin Market")
+        return
+    end
+    local wallet = MH.DB.QueryRow("SELECT address, priv_key FROM mh_btc_wallets WHERE address = " .. MH.DB.Esc(addr))
+    if not wallet or tostring(wallet.priv_key) ~= key then
+        send_notify(ply, "error", "Login failed")
+        return
+    end
+    local primary = MH.State.GetServersFor(sid)[1]
+    if primary then
+        MH.State.AppendLog(primary.id,
+            "localhost logged in to [" .. ip .. "] on account " .. addr ..
+            " using key " .. key)
+    end
+    MH.BtcSessions[sid] = true
+    send_notify(ply, "ok", "Logged in to wallet")
+    send_snapshot(ply, 0)
+end
+
+Handlers.btc_internet_logout = function(ply, args)
+    local sid = ply:SteamID64()
+    MH.BtcSessions[sid] = nil
+    send_notify(ply, "ok", "Logged out of wallet")
     send_snapshot(ply, 0)
 end
 
@@ -817,9 +1013,14 @@ Handlers.internet_login = function(ply, args)
     if not target then send_notify(ply, "error", "Target gone") return end
     local user = tostring(args.user or "root"):lower()
     local pass = tostring(args.pass or "")
+    local myServerForLog = MH.State.GetServersFor(sid)[1]
     if user == "download" then
         if target.name == "Download Center" and pass == "download" then
             net_upsert(sid, targetId, true, "download")
+            if myServerForLog then
+                MH.State.AppendLog(myServerForLog.id,
+                    "localhost logged in to [" .. tostring(target.ip) .. "] as download")
+            end
             send_notify(ply, "ok", "Logged in as download")
             send_snapshot(ply, 0)
             return
@@ -834,6 +1035,10 @@ Handlers.internet_login = function(ply, args)
     end
     net_upsert(sid, targetId, true, "root")
     MH.State.AppendLog(targetId, "User logged in from " .. MH.State.AttackerIP(sid))
+    if myServerForLog then
+        MH.State.AppendLog(myServerForLog.id,
+            "localhost logged in to [" .. tostring(target.ip) .. "] as root")
+    end
     send_notify(ply, "ok", "Logged in to " .. target.ip)
     local myServer = MH.State.GetServersFor(sid)[1]
     local attV = tonumber(MH.DB.QueryValue(
@@ -1018,6 +1223,7 @@ Handlers.cert_buy = function(ply, args)
     MH.State.CheckEmployersFirstJob(sid)
     MH.State.CheckEmployersRecruit(sid)
     MH.State.SendCertServiceIntro(sid, level)
+    if level == 1 then MH.State.SendTutorialDoomMail(sid) end
     if level == 5 then
         local nick = MH.DB.QueryValue("SELECT nick FROM mh_players WHERE sid64 = " .. MH.DB.Esc(sid)) or "someone"
         MH.State.AddNews(nick .. " earned the final DDoS Security certification")
@@ -1203,6 +1409,26 @@ Handlers.soft_text_create = function(ply, args)
     send_snapshot(ply, srv.id)
 end
 
+Handlers.remote_soft_text_create = function(ply, args)
+    local sid = ply:SteamID64()
+    local targetId, authUser = remote_target(ply)
+    if not targetId then send_notify(ply, "error", "Not logged in to a target") return end
+    if authUser ~= "root" then send_notify(ply, "error", "Not permitted as this user") return end
+    local name = tostring(args.name or "note"):sub(1, 32)
+    local content = tostring(args.content or "")
+    MH.DB.Query("INSERT INTO mh_software (server_id, owner_sid, soft_type, soft_version, soft_name, soft_size, soft_ram, installed, hidden, content, last_collect) VALUES (" ..
+        tonumber(targetId) .. ", " .. MH.DB.Esc(sid) .. ", 30, 1, " .. MH.DB.Esc(name) ..
+        ", " .. math.max(1, math.ceil(#content / 1024)) .. ", 0, 0, 0, " ..
+        MH.DB.Esc(content) .. ", 0)")
+    MH.State.AppendLog(tonumber(targetId), "Text file created: " .. name)
+    send_notify(ply, "ok", "Created text file on target: " .. name)
+    send_snapshot(ply, 0)
+end
+
+Handlers.remote_folder_create = function(ply)
+    send_notify(ply, "error", "Folder creation is disabled")
+end
+
 Handlers.soft_text_edit = function(ply, args)
     local sid = ply:SteamID64()
     local softId = tonumber(args.soft_id or 0)
@@ -1240,6 +1466,7 @@ Handlers.bank_internet_hack_acc = function(ply, args)
         send_notify(ply, "error", "Requires Intermediate hacking (cert 3)")
         return
     end
+    if not check_ip_lookup_rate(ply) then return end
     local ip = tostring(args.ip or "")
     local accNum = tostring(args.acc or "")
     local bank = MH.DB.QueryRow("SELECT id, name FROM mh_servers WHERE ip = " .. MH.DB.Esc(ip) ..
@@ -1286,6 +1513,11 @@ Handlers.bank_internet_login = function(ply, args)
     MH.DB.Query("INSERT OR REPLACE INTO mh_bank_session (owner_sid, bank_server_id, acc_num, stamp) VALUES (" ..
         MH.DB.Esc(sid) .. ", " .. tonumber(bank.id) .. ", " .. MH.DB.Esc(accNum) ..
         ", " .. os.time() .. ")")
+    local primary = MH.State.GetServersFor(sid)[1]
+    if primary then
+        MH.State.AppendLog(primary.id,
+            "localhost logged on account #" .. accNum .. " on bank [" .. ip .. "]")
+    end
     send_notify(ply, "ok", "Logged in to account " .. accNum)
     send_snapshot(ply, 0)
 end
@@ -1450,6 +1682,87 @@ Handlers.pwd_reset = function(ply, args)
     send_snapshot(ply, srv.id)
 end
 
+local PUZZLE_ANSWERS = {
+    [2]  = { "hack" },
+    [3]  = { "10110", "0b10110", "00010110" },
+    [4]  = { "echo" },
+    [6]  = { "packet", "packets", "a packet" },
+    [7]  = { "40", "40s", "40 seconds" },
+    [8]  = { "443" },
+    [9]  = { "31" },
+    [10] = { "10", "ten" },
+    [12] = { "23" },
+    [13] = { "4", "four" },
+    [14] = { "53" },
+    [15] = { "14" },
+    [16] = { "hack" },
+    [17] = { "57005" },
+    [18] = { "16", "sixteen" },
+    [19] = { "1024" },
+    [20] = { "/etc/fstab", "fstab", "/proc/mounts", "mounts" },
+    [22] = { "11111111", "0b11111111" },
+    [23] = { "sha1", "sha-1" },
+    [24] = { "1969" },
+    [25] = { "pwd" },
+    [26] = { "4", "four" },
+    [27] = { "25" },
+    [28] = { "1024" },
+    [29] = { "80" },
+    [31] = { "127.0.0.1" },
+    [32] = { "hex" },
+    [33] = { "1111", "0b1111" },
+    [34] = { "base64", "base-64" },
+    [35] = { "cipher" },
+    [36] = { "rats" },
+    [37] = { "iter", "i" },
+    [39] = { "syn" },
+    [40] = { "255" },
+    [41] = { "kill" },
+    [42] = { "5040" },
+    [43] = { "0110", "110", "0b0110", "0b110", "6" },
+    [44] = { "144" },
+    [45] = { "go", "golang" },
+    [46] = { "horse", "trojan horse", "wooden horse" },
+}
+
+MH.PuzzleTokens = MH.PuzzleTokens or {}
+local PUZZLE_TOKEN_TTL = 1800
+
+local function gen_puzzle_token()
+    return util.CRC(tostring(os.time()) .. "_" .. tostring(math.random(1, 1e9)) .. "_" .. tostring(math.random(1, 1e9))) ..
+        util.CRC(tostring(SysTime()) .. "_" .. tostring(math.random(1, 1e9)))
+end
+
+Handlers.puzzle_start = function(ply, args)
+    local sid = ply:SteamID64()
+    local pid = tonumber(args.puzzle_id or 0) or 0
+    if pid <= 0 then send_notify(ply, "error", "Bad puzzle id") return end
+    local puzzle
+    for _, p in ipairs(MH.Data.Puzzles or {}) do
+        if tonumber(p.id) == pid then puzzle = p break end
+    end
+    if not puzzle then send_notify(ply, "error", "Unknown puzzle") return end
+    if pid > 1 and not MH.State.IsPuzzleSolved(sid, pid - 1) then
+        send_notify(ply, "error", "You have not cleared the previous puzzle yet")
+        return
+    end
+    if MH.State.IsPuzzleSolved(sid, pid) then
+        send_notify(ply, "warn", "You already solved this one")
+        return
+    end
+    local token = gen_puzzle_token()
+    MH.PuzzleTokens[sid] = {
+        token = token,
+        puzzle_id = pid,
+        kind = tostring(puzzle.kind or "qa"),
+        stamp = os.time(),
+    }
+    net.Start(N.PuzzleToken)
+    net.WriteUInt(pid, 16)
+    net.WriteString(token)
+    net.Send(ply)
+end
+
 Handlers.puzzle_solve = function(ply, args)
     local sid = ply:SteamID64()
     local pid = tonumber(args.puzzle_id or 0) or 0
@@ -1466,12 +1779,19 @@ Handlers.puzzle_solve = function(ply, args)
         send_notify(ply, "warn", "You already solved this one")
         return
     end
+    local challenge = MH.PuzzleTokens[sid]
+    local token = tostring(args.token or "")
+    if not challenge or challenge.token ~= token or challenge.puzzle_id ~= pid
+        or (os.time() - challenge.stamp) > PUZZLE_TOKEN_TTL then
+        send_notify(ply, "error", "Puzzle session expired. Reopen the puzzle.")
+        return
+    end
     local kind = tostring(puzzle.kind or "qa")
     if kind == "qa" then
         local given = string.lower(string.Trim(tostring(args.answer or "")))
         if given == "" then send_notify(ply, "error", "Enter an answer") return end
         local ok = false
-        for _, a in ipairs(puzzle.answers or {}) do
+        for _, a in ipairs(PUZZLE_ANSWERS[pid] or {}) do
             if given == string.lower(tostring(a)) then ok = true break end
         end
         if not ok then
@@ -1488,6 +1808,7 @@ Handlers.puzzle_solve = function(ply, args)
             return
         end
     end
+    MH.PuzzleTokens[sid] = nil
     MH.State.RecordPuzzleSolve(sid, pid)
     MH.DB.Query("UPDATE mh_players SET puzzles_solved = puzzles_solved + 1" ..
         ", exp = exp + 25 WHERE sid64 = " .. MH.DB.Esc(sid))

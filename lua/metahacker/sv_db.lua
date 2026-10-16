@@ -246,6 +246,16 @@ local MIGRATIONS = {
     "ALTER TABLE mh_software ADD COLUMN hidden_version INTEGER DEFAULT 0",
     "UPDATE mh_software SET soft_name = 'hider' WHERE soft_name = 'hidder'",
     "ALTER TABLE mh_software ADD COLUMN licensed_to TEXT",
+    "UPDATE mh_servers SET name = 'Black Mesa' WHERE name = 'MD'",
+    "UPDATE mh_software SET soft_version = 10 WHERE server_id IN " ..
+        "(SELECT id FROM mh_servers WHERE name IN ('Treas', 'DarkMail', 'CryptoEx')) " ..
+        "AND soft_version > 10",
+    "ALTER TABLE mh_players ADD COLUMN last_collect_stamp INTEGER DEFAULT 0",
+    "ALTER TABLE mh_players ADD COLUMN last_collect_cash INTEGER DEFAULT 0",
+    "ALTER TABLE mh_players ADD COLUMN last_collect_btc REAL DEFAULT 0",
+    "ALTER TABLE mh_players ADD COLUMN last_collect_visited INTEGER DEFAULT 0",
+    "ALTER TABLE mh_players ADD COLUMN last_collect_acc TEXT",
+    "ALTER TABLE mh_players ADD COLUMN last_collect_json TEXT",
 }
 
 function MH.DB.Init()

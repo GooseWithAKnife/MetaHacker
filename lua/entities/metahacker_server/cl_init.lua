@@ -200,7 +200,7 @@ function ENT:Draw()
     cam.End3D2D()
 end
 
-local HOVER_RANGE_SQR = 300 * 300
+local HOVER_RANGE_SQR = 100 * 100
 local COL_HINT_BG = Color(23, 23, 23, 220)
 local COL_HINT_LINE = Color(159, 75, 163, 230)
 local COL_HINT_TEXT = Color(254, 254, 254)

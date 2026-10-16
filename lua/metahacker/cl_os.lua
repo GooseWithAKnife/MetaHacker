@@ -103,6 +103,22 @@ local function clear(container)
     end
 end
 
+function MH.OS.FmtCash(n)
+    n = math.floor(tonumber(n) or 0)
+    local neg = n < 0
+    local str = tostring(math.abs(n))
+    local out = ""
+    local count = 0
+    for i = #str, 1, -1 do
+        out = string.sub(str, i, i) .. out
+        count = count + 1
+        if count % 3 == 0 and i > 1 then out = "," .. out end
+    end
+    return (neg and "-" or "") .. out
+end
+
+local fmt_cash = MH.OS.FmtCash
+
 local function label(parent, text, font)
     local l = vgui.Create("DLabel", parent)
     l:SetText(text)
@@ -117,6 +133,164 @@ local function button(parent, text, cb)
     b:SetText(text)
     b.DoClick = cb
     return b
+end
+
+local function install_password_mask(entry, initial)
+    local realValue = tostring(initial or "")
+    local updating = false
+    if realValue ~= "" then
+        updating = true
+        entry:SetText(string.rep("*", #realValue))
+        updating = false
+    end
+    entry.GetRealValue = function() return realValue end
+    entry.OnChange = function(self)
+        if updating then return end
+        local shown = self:GetValue() or ""
+        local prevLen = #realValue
+        if #shown > prevLen then
+            realValue = realValue .. string.sub(shown, prevLen + 1)
+        elseif #shown < prevLen then
+            realValue = string.sub(realValue, 1, #shown)
+        else
+            return
+        end
+        updating = true
+        self:SetText(string.rep("*", #realValue))
+        self:SetCaretPos(#realValue)
+        updating = false
+    end
+end
+
+local SERVER_TAG_VARIANTS = {
+    default   = { bg = Color(153, 153, 153), fg = Color(255, 255, 255) },
+    inverse   = { bg = Color( 20,  20,  20), fg = Color(255, 255, 255) },
+    success   = { bg = Color( 70, 136,  71), fg = Color(255, 255, 255) },
+    warning   = { bg = Color(248, 148,   6), fg = Color(255, 255, 255) },
+    important = { bg = Color(185,  74,  72), fg = Color(255, 255, 255) },
+    info      = { bg = Color( 58, 135, 173), fg = Color(255, 255, 255) },
+}
+
+local function get_server_tag(inet)
+    local n = tostring(inet and inet.name or "")
+    if string.find(string.lower(n), "whois") then return "Whois", "warning" end
+    if string.find(string.lower(n), "bank") then return "Bank", "inverse" end
+    if n == "Bitcoin Market" then return "Bitcoin Market", "inverse" end
+    if n == "ISP" then return "ISP", "important" end
+    if n == "FBI" or n == "Sourcenet" or n == "MSA" then return "Important", "important" end
+    if n == "Employers" or n == "GooseCorp" or n == "MD" or n == "Black Mesa" then return "Employers", "inverse" end
+    return "NPC", "info"
+end
+
+local function server_tag(parent, text, variant)
+    local palette = SERVER_TAG_VARIANTS[variant] or SERVER_TAG_VARIANTS.info
+    local tagRow = vgui.Create("DPanel", parent)
+    tagRow:Dock(TOP)
+    tagRow:SetTall(22)
+    tagRow:DockMargin(0, 6, 0, 0)
+    tagRow.Paint = function() end
+    local tagBtn = vgui.Create("DPanel", tagRow)
+    tagBtn:Dock(RIGHT)
+    tagBtn:DockMargin(0, 0, 10, 0)
+    surface.SetFont("DermaDefaultBold")
+    local tw = surface.GetTextSize(text)
+    tagBtn:SetWide(math.max(80, tw + 24))
+    tagBtn.Paint = function(self, w, h)
+        surface.SetDrawColor(palette.bg.r, palette.bg.g, palette.bg.b, 255)
+        surface.DrawRect(0, 0, w, h)
+        draw.SimpleText(text, "DermaDefaultBold", w / 2, h / 2, palette.fg,
+            TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
+    end
+    return tagRow
+end
+
+local function tab_header(container, titleText, srv)
+    local header = vgui.Create("DPanel", container)
+    header:Dock(TOP)
+    header:SetTall(70)
+    header.Paint = function() end
+
+    local title = vgui.Create("DLabel", header)
+    title:Dock(LEFT)
+    title:SetWide(400)
+    title:DockMargin(10, 0, 0, 0)
+    title:SetFont("DermaLarge")
+    title:SetDark(true)
+    title:SetText(tostring(titleText or ""))
+
+    local info = vgui.Create("DPanel", header)
+    info:Dock(RIGHT)
+    info:SetWide(320)
+    info.Paint = function() end
+
+    local ipTxt = tostring((srv and srv.ip) or "0.0.0.0")
+    local ipLbl = vgui.Create("DLabel", info)
+    ipLbl:Dock(TOP)
+    ipLbl:DockMargin(0, 0, 10, 0)
+    ipLbl:SetFont("DermaLarge")
+    ipLbl:SetDark(true)
+    ipLbl:SetContentAlignment(6)
+    ipLbl:SetTall(26)
+    ipLbl:SetText(ipTxt)
+
+    surface.SetFont("DermaLarge")
+    local ipTextW = select(1, surface.GetTextSize(ipTxt))
+    local clockRow = vgui.Create("DPanel", info)
+    clockRow:Dock(TOP)
+    clockRow:SetTall(16)
+    clockRow:DockMargin(0, 2, 0, 0)
+    clockRow.Paint = function() end
+    local clockLbl = vgui.Create("DLabel", clockRow)
+    clockLbl:Dock(RIGHT)
+    clockLbl:SetWide(ipTextW + 20)
+    clockLbl:DockMargin(0, 0, -25, 0)
+    clockLbl:SetDark(true)
+    clockLbl:SetContentAlignment(4)
+    clockLbl:SetTextInset(20, 0)
+    local timeIconMat = Material("icon16/time.png")
+    clockLbl.PaintOver = function(self, w, h)
+        surface.SetDrawColor(255, 255, 255, 255)
+        surface.SetMaterial(timeIconMat)
+        surface.DrawTexturedRect(0, math.floor((h - 16) / 2), 16, 16)
+    end
+    clockLbl.Think = function(self)
+        local baseline = tonumber(MH.OS.State.client_baseline or CurTime()) or CurTime()
+        local serverNow = (tonumber(MH.OS.State.server_now) or os.time()) + (CurTime() - baseline)
+        self:SetText(os.date("!%Y-%m-%d %H:%M:%S", math.floor(serverNow)))
+    end
+
+    local p = MH.OS.State.player or {}
+    local rep = math.floor(tonumber(p.exp or 0) or 0)
+    local myRank
+    for i, r in ipairs((MH.OS.State.ranking or {}).reputation or {}) do
+        if tostring(r.sid64 or "") == (LocalPlayer and IsValid(LocalPlayer()) and LocalPlayer():SteamID64() or "") then
+            myRank = i
+            break
+        end
+    end
+    local statsWrap = vgui.Create("DPanel", info)
+    statsWrap:Dock(TOP)
+    statsWrap:SetTall(16)
+    statsWrap:DockMargin(0, 4, 10, 0)
+    statsWrap.Paint = function() end
+    local statsRow = vgui.Create("DPanel", statsWrap)
+    statsRow:Dock(RIGHT)
+    statsRow:SetWide(math.max(ipTextW, 160))
+    statsRow.Paint = function() end
+    local repLbl = vgui.Create("DLabel", statsRow)
+    repLbl:Dock(LEFT)
+    repLbl:SetDark(true)
+    repLbl:SetText(tostring(rep) .. (myRank and ("   (#" .. myRank .. ")") or ""))
+    repLbl:SizeToContents()
+    local cashLbl = vgui.Create("DLabel", statsRow)
+    cashLbl:Dock(RIGHT)
+    cashLbl:SetDark(false)
+    cashLbl:SetTextColor(Color(60, 160, 70))
+    cashLbl:SetContentAlignment(6)
+    cashLbl:SetText("$" .. fmt_cash(p.cash))
+    cashLbl:SizeToContents()
+
+    return header, info
 end
 
 local PROCESS_SPAWNING_CMDS = {
@@ -231,6 +405,60 @@ local function usage_pie(parent, size, title, used, total)
     return wrap
 end
 
+function MH.OS.OpenNewTextPopup(ipAtText, onCreate)
+    local f = vgui.Create("DFrame")
+    f:SetSize(560, 380)
+    f:Center()
+    f:SetTitle("Create text file at " .. tostring(ipAtText or ""))
+    f:SetDeleteOnClose(true)
+    f:MakePopup()
+
+    local nameRow = vgui.Create("DPanel", f)
+    nameRow:Dock(TOP)
+    nameRow:SetTall(28)
+    nameRow:DockMargin(10, 32, 10, 0)
+    nameRow.Paint = function() end
+    local nameEntry = vgui.Create("DTextEntry", nameRow)
+    nameEntry:Dock(FILL)
+    nameEntry:SetPlaceholderText("File name")
+    local extLbl = vgui.Create("DLabel", nameRow)
+    extLbl:Dock(RIGHT)
+    extLbl:SetWide(44)
+    extLbl:DockMargin(6, 0, 0, 0)
+    extLbl:SetDark(true)
+    extLbl:SetContentAlignment(5)
+    extLbl:SetText(".txt")
+
+    local body = vgui.Create("DTextEntry", f)
+    body:Dock(FILL)
+    body:DockMargin(10, 10, 10, 10)
+    body:SetMultiline(true)
+    body:SetVerticalScrollbarEnabled(true)
+    body:SetPlaceholderText("Content")
+
+    local btnRow = vgui.Create("DPanel", f)
+    btnRow:Dock(BOTTOM)
+    btnRow:SetTall(40)
+    btnRow:DockMargin(10, 0, 10, 10)
+    btnRow.Paint = function() end
+    local cancelB = vgui.Create("DButton", btnRow)
+    cancelB:Dock(RIGHT)
+    cancelB:SetWide(90)
+    cancelB:SetText("Cancel")
+    cancelB.DoClick = function() f:Remove() end
+    local createB = vgui.Create("DButton", btnRow)
+    createB:Dock(RIGHT)
+    createB:SetWide(140)
+    createB:DockMargin(0, 0, 6, 0)
+    createB:SetText("Create text file")
+    createB.DoClick = function()
+        local nm = string.Trim(tostring(nameEntry:GetValue() or ""))
+        if nm == "" then return end
+        if onCreate then onCreate(nm, tostring(body:GetValue() or "")) end
+        f:Remove()
+    end
+end
+
 local function open_text_editor(s, readOnly)
     local f = vgui.Create("DFrame")
     f:SetSize(640, 480)
@@ -264,82 +492,253 @@ end
 Tabs["Home"] = function(container)
     clear(container)
     local p = MH.OS.State.player or {}
-    local nick = tostring(p.nick or LocalPlayer():Nick())
-    label(container, "Welcome back, " .. nick, "DermaLarge"):Dock(TOP)
+    local srv = current_server() or (MH.OS.State.servers or {})[1]
 
-    local function card(title)
-        local w = vgui.Create("DPanel", container)
-        w:Dock(TOP)
-        w:DockMargin(0, 8, 0, 0)
+    local header = vgui.Create("DPanel", container)
+    header:Dock(TOP)
+    header:SetTall(70)
+    header.Paint = function() end
+
+    local title = vgui.Create("DLabel", header)
+    title:Dock(LEFT)
+    title:SetWide(400)
+    title:DockMargin(10, 0, 0, 0)
+    title:SetFont("DermaLarge")
+    title:SetDark(true)
+    title:SetText("Control Panel")
+
+    local info = vgui.Create("DPanel", header)
+    info:Dock(RIGHT)
+    info:SetWide(320)
+    info.Paint = function() end
+
+    local ipLbl = vgui.Create("DLabel", info)
+    ipLbl:Dock(TOP)
+    ipLbl:DockMargin(0, 0, 10, 0)
+    ipLbl:SetFont("DermaLarge")
+    ipLbl:SetDark(true)
+    ipLbl:SetContentAlignment(6)
+    ipLbl:SetTall(26)
+    ipLbl:SetText(tostring((srv and srv.ip) or "0.0.0.0"))
+
+    surface.SetFont("DermaLarge")
+    local ipTextW = select(1, surface.GetTextSize(tostring((srv and srv.ip) or "0.0.0.0")))
+    local clockRow = vgui.Create("DPanel", info)
+    clockRow:Dock(TOP)
+    clockRow:SetTall(16)
+    clockRow:DockMargin(0, 2, 5, 0)
+    clockRow.Paint = function() end
+    local clockLbl = vgui.Create("DLabel", clockRow)
+    clockLbl:Dock(RIGHT)
+    clockLbl:SetWide(ipTextW + 20)
+    clockLbl:DockMargin(0, 0, -30, 0)
+    clockLbl:SetDark(true)
+    clockLbl:SetContentAlignment(4)
+    clockLbl:SetTextInset(20, 0)
+    local timeIconMat = Material("icon16/time.png")
+    clockLbl.PaintOver = function(self, w, h)
+        surface.SetDrawColor(255, 255, 255, 255)
+        surface.SetMaterial(timeIconMat)
+        surface.DrawTexturedRect(0, math.floor((h - 16) / 2), 16, 16)
+    end
+    clockLbl.Think = function(self)
+        local baseline = tonumber(MH.OS.State.client_baseline or CurTime()) or CurTime()
+        local serverNow = (tonumber(MH.OS.State.server_now) or os.time()) + (CurTime() - baseline)
+        self:SetText(os.date("!%Y-%m-%d %H:%M:%S", math.floor(serverNow)))
+    end
+
+    local passRow = vgui.Create("DPanel", info)
+    passRow:Dock(TOP)
+    passRow:SetTall(22)
+    passRow:DockMargin(0, 6, 6, 0)
+    passRow.Paint = function() end
+    local changeB = vgui.Create("DButton", passRow)
+    changeB:Dock(RIGHT)
+    changeB:SetWide(80)
+    changeB:SetText("Change")
+    changeB.DoClick = function()
+        Derma_Query("Reset root password on " .. tostring(srv and srv.name or "server") .. "?",
+            "Reset password", "Reset", function() send_cmd("pwd_reset", {}) end,
+            "Cancel", function() end)
+    end
+    local passLbl = vgui.Create("DLabel", passRow)
+    passLbl:Dock(FILL)
+    passLbl:DockMargin(0, 0, 10, 0)
+    passLbl:SetDark(true)
+    passLbl:SetContentAlignment(6)
+    passLbl:SetText(tostring((srv and srv.root_pass) or "????????"))
+
+    local function card(parent, title)
+        local w = vgui.Create("DPanel", parent)
         local h = vgui.Create("DLabel", w)
         h:Dock(TOP)
-        h:DockMargin(10, 6, 10, 0)
+        h:DockMargin(10, 6, 10, 2)
         h:SetDark(true)
         h:SetFont("DermaDefaultBold")
         h:SetText(title)
         h:SizeToContents()
-        return w
+        return w, h
     end
 
-    local status = card("Status")
-    status:SetTall(130)
-    local function row(parent, txt)
-        local l = vgui.Create("DLabel", parent)
-        l:Dock(TOP)
-        l:DockMargin(14, 2, 10, 0)
-        l:SetDark(true)
-        l:SetText(txt)
-        l:SizeToContents()
+    local function kv_row(parent, key, value)
+        local r = vgui.Create("DPanel", parent)
+        r:Dock(TOP)
+        r:SetTall(24)
+        r:DockMargin(10, 2, 10, 0)
+        local lk = vgui.Create("DLabel", r)
+        lk:Dock(LEFT)
+        lk:SetWide(130)
+        lk:SetDark(true)
+        lk:SetText(tostring(key))
+        local lv = vgui.Create("DLabel", r)
+        lv:Dock(FILL)
+        lv:SetDark(true)
+        lv:SetText(tostring(value))
+        return r
     end
-    row(status, "Bitcoin: " .. string.format("%.7f", tonumber(p.bitcoin or 0)))
-    row(status, "Reputation: " .. tostring(tonumber(p.exp or 0)))
-    row(status, "Certification level: " .. tostring(tonumber(p.cert_level or 0)) .. " / 5")
-    row(status, "Servers owned: " .. tostring(#(MH.OS.State.servers or {})))
 
-    local activeMission = nil
-    for _, m in ipairs(MH.OS.State.missions or {}) do
-        if tonumber(m.status or 0) == 1 or tonumber(m.status or 0) == 2 then
-            activeMission = m
+    local topRow = vgui.Create("DPanel", container)
+    topRow:Dock(TOP)
+    topRow:SetTall(170)
+    topRow:DockMargin(0, 8, 0, 0)
+    topRow.Paint = function() end
+
+    local hw, hwTitle = card(topRow, "Hardware Information")
+    hw:Dock(LEFT)
+    hw:DockMargin(0, 0, 10, 0)
+    hwTitle:DockMargin(8, 5, 10, 2)
+    topRow.PerformLayout = function(self)
+        hw:SetWide(math.floor((self:GetWide() - 10) / 2))
+    end
+    local cpuTier = MH.Data.Hardware.cpu[tonumber(srv and srv.cpu_tier or 1) or 1]
+    local hddTier = MH.Data.Hardware.hdd[tonumber(srv and srv.hdd_tier or 1) or 1]
+    local ramTier = MH.Data.Hardware.ram[tonumber(srv and srv.ram_tier or 1) or 1]
+    local netTier = MH.Data.Hardware.net[tonumber(srv and srv.net_tier or 1) or 1]
+    local xhdCount = srv and srv.xhds and #srv.xhds or 0
+    local xhdTxt = "None"
+    if xhdCount > 0 then
+        local total = 0
+        for _, x in ipairs(srv.xhds or {}) do
+            local t = MH.Data.Hardware.hdd[tonumber(x.cap_tier) or 1] or MH.Data.Hardware.hdd[1]
+            total = total + (t.mb or 0)
+        end
+        xhdTxt = xhdCount .. " drive" .. (xhdCount == 1 and "" or "s") .. "   " .. total .. " MB"
+    end
+    local function hw_row(key, value)
+        local row = kv_row(hw, key, value)
+        row:DockMargin(5.5, 0, 0, 0)
+        for _, child in ipairs(row:GetChildren()) do
+            if child.SetTextInset then child:SetTextInset(5, 0) end
+        end
+    end
+    hw_row("Processor",   (cpuTier.mhz or 0) .. " MHz   " .. (cpuTier.name or ""))
+    hw_row("Hard Drive",  (hddTier.mb or 0) .. " MB   " .. (hddTier.name or ""))
+    hw_row("Memory",      (ramTier.mb or 0) .. " MB   " .. (ramTier.name or ""))
+    hw_row("Internet",    (netTier.mbps or 0) .. " Mbit/s   " .. (netTier.name or ""))
+    hw_row("External HD", xhdTxt)
+
+    local gi, giTitle = card(topRow, "General Info")
+    gi:Dock(FILL)
+    giTitle:DockMargin(14, 5, 10, 2)
+    local rep = tonumber(p.exp or 0) or 0
+    local myRank
+    for i, r in ipairs((MH.OS.State.ranking or {}).reputation or {}) do
+        if tostring(r.sid64 or "") == (LocalPlayer and IsValid(LocalPlayer()) and LocalPlayer():SteamID64() or "") then
+            myRank = i
             break
         end
     end
-    if activeMission then
-        local mc = card("Current mission")
-        mc:SetTall(72)
-        local MISSION_TITLES_LOCAL = {
-            [1] = "Delete a software", [2] = "Steal a software",
-            [3] = "Check bank status", [4] = "Transfer money",
-            [5] = "Destroy a server",
-        }
-        local title = MISSION_TITLES_LOCAL[tonumber(activeMission.mtype)] or ("Mission #" .. tostring(activeMission.mtype))
-        row(mc, title .. "  prize $" .. tostring(activeMission.prize))
-        row(mc, "Target: " .. tostring(activeMission.target_name or "?") .. "   " .. tostring(activeMission.target_ip or ""))
-    end
-
-    local unread = tonumber(MH.OS.State.mail_unread or 0) or 0
-    if unread > 0 then
-        local mc = card("Mail")
-        mc:SetTall(44)
-        row(mc, "You have " .. unread .. " unread message" .. (unread == 1 and "" or "s") .. ".")
-    end
-
-    local ddosProc = nil
+    local runningTasks = 0
     for _, pr in ipairs(MH.OS.State.all_processes or {}) do
-        if pr.action == "DDOS" then ddosProc = pr break end
+        if (tonumber(pr.paused_remaining or 0) or 0) == 0 then
+            runningTasks = runningTasks + 1
+        end
     end
-    if ddosProc then
-        local mc = card("DDoS in progress")
-        mc:SetTall(44)
-        row(mc, "Attack running against target " .. tostring(ddosProc.info or ddosProc.victim_server))
+    local connectedTo = "No one"
+    local inet = MH.OS.State.internet
+    if inet and inet.id and tonumber(inet.id or 0) > 0 then
+        connectedTo = tostring(inet.ip or "?") .. " (" .. tostring(inet.name or "?") .. ")"
+    end
+    local missionTxt = "None"
+    for _, m in ipairs(MH.OS.State.missions or {}) do
+        local st = tonumber(m.status or 0)
+        if st == 1 or st == 2 then
+            local MISSION_TITLES_LOCAL = {
+                [1] = "Delete a software", [2] = "Steal a software",
+                [3] = "Check bank status", [4] = "Transfer money",
+                [5] = "Destroy a server",
+            }
+            missionTxt = (MISSION_TITLES_LOCAL[tonumber(m.mtype)] or ("Mission #" .. tostring(m.mtype))) ..
+                " ($" .. tostring(m.prize or 0) .. ")"
+            break
+        end
+    end
+    local function gi_row(key, value)
+        local row = kv_row(gi, key, value)
+        for _, child in ipairs(row:GetChildren()) do
+            if child.SetTextInset then child:SetTextInset(5, 0) end
+        end
+    end
+    gi_row("Reputation",   rep .. (myRank and ("   Ranked #" .. myRank) or ""))
+    gi_row("Running tasks", runningTasks)
+    gi_row("Connected to", connectedTo)
+    gi_row("Mission",      missionTxt)
+
+    local midRow = vgui.Create("DPanel", container)
+    midRow:Dock(TOP)
+    midRow:SetTall(300)
+    midRow:DockMargin(0, 8, 0, 0)
+    midRow.Paint = function() end
+
+    local leftCol = vgui.Create("DPanel", midRow)
+    leftCol:Dock(LEFT)
+    leftCol:DockMargin(0, 0, 10, 0)
+    leftCol.Paint = function() end
+    midRow.PerformLayout = function(self)
+        leftCol:SetWide(math.floor((self:GetWide() - 10) / 2))
     end
 
+    local newsCard = card(leftCol, "News")
+    newsCard:Dock(TOP)
+    newsCard:SetTall(170)
     local newsRows = MH.OS.State.news or {}
-    if #newsRows > 0 then
-        local mc = card("News")
-        mc:SetTall(22 + 18 * #newsRows + 10)
+    if #newsRows == 0 then
+        kv_row(newsCard, "", "No news yet.")
+    else
+        local inner = vgui.Create("DScrollPanel", newsCard)
+        inner:Dock(FILL)
+        inner:DockMargin(10, 4, 10, 6)
         for _, n in ipairs(newsRows) do
-            row(mc, os.date("[%Y-%m-%d %H:%M] ", tonumber(n.stamp or 0)) .. tostring(n.text or ""))
+            local l = vgui.Create("DLabel", inner)
+            l:Dock(TOP)
+            l:DockMargin(0, 2, 0, 0)
+            l:SetDark(true)
+            l:SetText(os.date("[%Y-%m-%d %H:%M] ", tonumber(n.stamp or 0)) .. tostring(n.text or ""))
+            l:SizeToContents()
         end
+    end
+
+    local bottomRow = vgui.Create("DPanel", leftCol)
+    bottomRow:Dock(FILL)
+    bottomRow:DockMargin(0, 8, 0, 0)
+    bottomRow.Paint = function() end
+    local fbi = card(bottomRow, "FBI Wanted List")
+    fbi:Dock(FILL)
+    kv_row(fbi, "", "No wanted IPs ATM")
+
+    local topUsers, topTitle = card(midRow, "Top 7 users")
+    topUsers:Dock(FILL)
+    topTitle:DockMargin(10, 6, 10, 2)
+    local topList = vgui.Create("DListView", topUsers)
+    topList:Dock(FILL)
+    topList:DockMargin(10, 4, 10, 10)
+    topList:AddColumn("#"):SetFixedWidth(40)
+    topList:AddColumn("User"):SetFixedWidth(200)
+    topList:AddColumn("Reputation")
+    local repRows = (MH.OS.State.ranking or {}).reputation or {}
+    for i = 1, math.min(7, #repRows) do
+        local r = repRows[i]
+        topList:AddLine(tostring(i), tostring(r.nick or "?"), tostring(math.floor(tonumber(r.val) or 0)))
     end
 end
 
@@ -374,12 +773,19 @@ end
 
 Tabs["Hardware"] = function(container)
     clear(container)
-    label(container, "Hardware", "DermaLarge"):Dock(TOP)
+    tab_header(container, "Hardware", current_server())
 
     local subbar = vgui.Create("DPanel", container)
     subbar:Dock(TOP)
     subbar:SetTall(28)
     subbar:DockMargin(0, 2, 0, 6)
+    local HW_ICONS = {
+        ["My hardware"]    = "icon16/server.png",
+        ["Upgrade server"] = "icon16/wrench.png",
+        ["Buy new server"] = "icon16/server_add.png",
+        ["Internet"]       = "icon16/connect.png",
+        ["External HD"]    = "icon16/drive.png",
+    }
     for _, name in ipairs({ "My hardware", "Upgrade server", "Buy new server", "Internet", "External HD" }) do
         local b = vgui.Create("DButton", subbar)
         b:SetText(name)
@@ -389,6 +795,21 @@ Tabs["Hardware"] = function(container)
         b.DoClick = function()
             MH.OS.HardwareView = name
             if MH.OS.Rebuild then MH.OS.Rebuild() end
+        end
+        if HW_ICONS[name] then
+            local iconMat = Material(HW_ICONS[name])
+            surface.SetFont("DermaDefault")
+            local textW = select(1, surface.GetTextSize(name))
+            local iconW, gap = 16, 8
+            b:SetContentAlignment(6)
+            b:SetTextInset(math.floor((140 - (iconW + gap + textW)) / 2), 0)
+            b.PaintOver = function(self, w, h)
+                local x = math.floor((w - (iconW + gap + textW)) / 2)
+                local y = math.floor((h - iconW) / 2)
+                surface.SetDrawColor(255, 255, 255, 255)
+                surface.SetMaterial(iconMat)
+                surface.DrawTexturedRect(x, y, iconW, iconW)
+            end
         end
     end
 
@@ -565,31 +986,34 @@ local function ram_usage_for(srv)
     return used, total
 end
 
+local LOCAL_SOFT_COL_LINES_X = { 290, 370, 450 }
 local function soft_row(parent, s, srv, isXHD)
     local meta = MH.Data.Soft[tonumber(s.soft_type or 0)] or {}
     local row = vgui.Create("DPanel", parent)
     row:Dock(TOP)
     row:SetTall(28)
     row:DockMargin(0, 2, 0, 0)
-    local function rcol(txt, wide, dock)
+    row.PaintOver = function(self, w, h)
+        surface.SetDrawColor(80, 80, 80, 180)
+        for _, x in ipairs(LOCAL_SOFT_COL_LINES_X) do
+            surface.DrawLine(x, 0, x, h)
+        end
+    end
+    local function rcol(txt, wide, dock, bold)
         local l = vgui.Create("DLabel", row)
         l:Dock(dock or LEFT)
         if wide then l:SetWide(wide) end
         l:SetDark(true)
+        if bold then l:SetFont("DermaDefaultBold") end
         l:SetText("  " .. tostring(txt or ""))
     end
-    local statusTxt
-    if tonumber(s.installed or 0) == 1 then statusTxt = "Running"
-    elseif tonumber(s.hidden or 0) == 1 then statusTxt = "Hidden"
-    else statusTxt = "" end
-    rcol((s.soft_name or "unknown") .. (meta.ext or ""), 180)
-    rcol(meta.name or ("#" .. tostring(s.soft_type)), 110)
-    rcol("v" .. MH.Data.DotVersion(s.soft_version), 60)
-    rcol(tostring(s.soft_size or 0) .. " MB", 60)
-    rcol(statusTxt, 70)
+    local isRunning = tonumber(s.installed or 0) == 1
+    rcol((s.soft_name or "unknown") .. (meta.ext or ""), 290, nil, isRunning)
+    rcol("v" .. MH.Data.DotVersion(s.soft_version), 80)
+    rcol(tostring(s.soft_size or 0) .. " MB", 80)
     local actions = vgui.Create("DPanel", row)
     actions:Dock(RIGHT)
-    actions:SetWide(isXHD and 220 or 360)
+    actions:SetWide(isXHD and 160 or 220)
     local function add_btn(text, cb, w)
         local b = vgui.Create("DButton", actions)
         b:SetText(text)
@@ -622,7 +1046,7 @@ local function soft_row(parent, s, srv, isXHD)
                 toolOwned[st] = math.max(toolOwned[st], tonumber(inv.soft_version) or 0)
             end
         end
-        add_btn("Info", function()
+        local infoBtn = add_btn("", function()
             local meta = MH.Data.Soft[tonumber(s.soft_type or 0)] or {}
             Derma_Message(
                 "Name: " .. tostring(s.soft_name or "?") .. (meta.ext or "") ..
@@ -633,35 +1057,86 @@ local function soft_row(parent, s, srv, isXHD)
                 "\nStatus: " .. (tonumber(s.installed) == 1 and "Running" or
                                  (tonumber(s.hidden) == 1 and "Hidden" or "Idle")),
                 "File info", "OK")
-        end)
-        if tonumber(s.soft_type) == 30 then
+        end, 28)
+        infoBtn:SetTooltip("Info")
+        local infoMat = Material("icon16/information.png")
+        infoBtn.PaintOver = function(self, w, h)
+            surface.SetDrawColor(255, 255, 255, 255)
+            surface.SetMaterial(infoMat)
+            surface.DrawTexturedRect(math.floor((w - 16) / 2), math.floor((h - 16) / 2), 16, 16)
+        end
+        local st = tonumber(s.soft_type)
+        if st == 30 then
             add_btn("Edit", function() open_text_editor(s, false) end)
         end
-        add_btn(tonumber(s.installed) == 1 and "Stop" or "Run", function()
-            send_cmd("soft_action", { soft_id = s.id,
-                action = tonumber(s.installed) == 1 and "uninstall" or "install" })
-        end)
-        local isHidden = tonumber(s.hidden) == 1
-        local toolType = isHidden and 6 or 5
-        local toolName = isHidden and "Seeker" or "Hider"
-        local hsBtn = add_btn(isHidden and "Seek" or "Hide", function()
-            send_cmd("soft_action", { soft_id = s.id, action = isHidden and "seek" or "hide" })
-        end)
-        if toolOwned[toolType] <= 0 then
-            hsBtn:SetEnabled(false)
-            hsBtn:SetTooltip("Install a " .. toolName .. " first")
+        if st ~= 30 and st ~= 31 then
+            local isRunning = tonumber(s.installed) == 1
+            if isRunning then
+                local stopBtn = add_btn("", function()
+                    send_cmd("soft_action", { soft_id = s.id, action = "uninstall" })
+                end, 28)
+                stopBtn:SetTooltip("Stop")
+                local stopMat = Material("icon16/stop.png")
+                stopBtn.PaintOver = function(self, w, h)
+                    surface.SetDrawColor(255, 255, 255, 255)
+                    surface.SetMaterial(stopMat)
+                    surface.DrawTexturedRect(math.floor((w - 16) / 2), math.floor((h - 16) / 2), 16, 16)
+                end
+            else
+                local runBtn = add_btn("", function()
+                    send_cmd("soft_action", { soft_id = s.id, action = "install" })
+                end, 28)
+                runBtn:SetTooltip("Run")
+                local runMat = Material("icon16/control_play.png")
+                runBtn.PaintOver = function(self, w, h)
+                    surface.SetDrawColor(255, 255, 255, 255)
+                    surface.SetMaterial(runMat)
+                    surface.DrawTexturedRect(math.floor((w - 16) / 2), math.floor((h - 16) / 2), 16, 16)
+                end
+            end
+            local isHidden = tonumber(s.hidden) == 1
+            local toolType = isHidden and 6 or 5
+            local toolName = isHidden and "Seeker" or "Hider"
+            local hsBtn = add_btn("", function()
+                send_cmd("soft_action", { soft_id = s.id, action = isHidden and "seek" or "hide" })
+            end, 28)
+            hsBtn:SetTooltip(isHidden and "Show" or "Hide")
+            local hsMat = Material(isHidden and "icon16/magnifier.png" or "icon16/wand.png")
+            hsBtn.PaintOver = function(self, w, h)
+                surface.SetDrawColor(255, 255, 255, 255)
+                surface.SetMaterial(hsMat)
+                surface.DrawTexturedRect(math.floor((w - 16) / 2), math.floor((h - 16) / 2), 16, 16)
+            end
+            if toolOwned[toolType] <= 0 then
+                hsBtn:SetEnabled(false)
+                hsBtn:SetTooltip("Install a " .. toolName .. " first")
+            end
         end
-        add_btn("Rename", function()
+        local renameBtn = add_btn("", function()
             Derma_StringRequest("Rename file", "New name:", tostring(s.soft_name or ""), function(nm)
                 send_cmd("soft_rename", { soft_id = s.id, name = nm })
             end)
-        end)
-        add_btn("Delete", function()
+        end, 28)
+        renameBtn:SetTooltip("Rename")
+        local pencilMat = Material("icon16/pencil.png")
+        renameBtn.PaintOver = function(self, w, h)
+            surface.SetDrawColor(255, 255, 255, 255)
+            surface.SetMaterial(pencilMat)
+            surface.DrawTexturedRect(math.floor((w - 16) / 2), math.floor((h - 16) / 2), 16, 16)
+        end
+        local deleteBtn = add_btn("", function()
             Derma_Query("Delete " .. tostring(s.soft_name or "file") .. "?",
                 "Delete file", "Delete",
                 function() send_cmd("soft_action", { soft_id = s.id, action = "delete" }) end,
                 "Cancel", function() end)
-        end)
+        end, 28)
+        deleteBtn:SetTooltip("Delete")
+        local binMat = Material("icon16/bin.png")
+        deleteBtn.PaintOver = function(self, w, h)
+            surface.SetDrawColor(255, 255, 255, 255)
+            surface.SetMaterial(binMat)
+            surface.DrawTexturedRect(math.floor((w - 16) / 2), math.floor((h - 16) / 2), 16, 16)
+        end
     end
 end
 
@@ -673,9 +1148,68 @@ Tabs["Software"] = function(container)
         return
     end
 
-    local subbar = vgui.Create("DPanel", container)
+    tab_header(container, "Software", srv)
+
+    local body = vgui.Create("DPanel", container)
+    body:Dock(TOP)
+    body:SetTall(620)
+    body.Paint = function() end
+
+    local sidebar = vgui.Create("DPanel", body)
+    sidebar:Dock(RIGHT)
+    sidebar:SetWide(220)
+    sidebar:DockMargin(10, 6, 0, 0)
+
+    local hUsed, hTotal = hdd_usage_for(srv)
+    local hdd = usage_pie(sidebar, 180, "HDD", hUsed, hTotal)
+    hdd:Dock(TOP)
+    hdd:DockMargin(0, 4, 0, 8)
+
+    local btnRow = vgui.Create("DPanel", sidebar)
+    btnRow:Dock(TOP)
+    btnRow:SetTall(32)
+    btnRow:DockMargin(0, 10, 0, 0)
+    btnRow.Paint = function() end
+    local newTxt = vgui.Create("DButton", btnRow)
+    newTxt:Dock(LEFT)
+    newTxt:SetWide(100)
+    newTxt:SetText("New text file")
+    newTxt.DoClick = function()
+        MH.OS.OpenNewTextPopup(tostring(srv.ip or ""), function(name, content)
+            send_cmd("soft_text_create", { server_id = srv.id, name = name, content = content })
+        end)
+    end
+    local avOwned = 0
+    for _, inv in ipairs(srv.software or {}) do
+        if tonumber(inv.soft_type) == 7 and tonumber(inv.installed) == 1 then
+            avOwned = math.max(avOwned, tonumber(inv.soft_version) or 0)
+        end
+    end
+    local avScan = vgui.Create("DButton", btnRow)
+    avScan:Dock(RIGHT)
+    avScan:SetWide(100)
+    avScan:SetText("AV scan")
+    avScan:DockMargin(10, 0, 0, 0)
+    avScan.DoClick = function()
+        send_cmd("av_scan", { scope = "local", server_id = srv.id })
+    end
+    if avOwned <= 0 then
+        avScan:SetEnabled(false)
+        avScan:SetTooltip("Install an Antivirus first")
+    end
+
+    local main = vgui.Create("DPanel", body)
+    main:Dock(FILL)
+    main:DockMargin(0, 6, 10, 0)
+    main:DockPadding(6, 6, 6, 6)
+
+    local subbar = vgui.Create("DPanel", main)
     subbar:Dock(TOP)
     subbar:SetTall(28)
+    local SW_ICONS = {
+        ["Softwares"]   = "icon16/folder.png",
+        ["External HD"] = "icon16/drive.png",
+    }
     for _, name in ipairs({ "Softwares", "External HD" }) do
         local b = vgui.Create("DButton", subbar)
         b:SetText(name)
@@ -686,70 +1220,34 @@ Tabs["Software"] = function(container)
             MH.OS.SoftwareView = name
             if MH.OS.Rebuild then MH.OS.Rebuild() end
         end
-    end
-    local newTxt = vgui.Create("DButton", subbar)
-    newTxt:SetText("New text file")
-    newTxt:Dock(RIGHT)
-    newTxt:SetWide(120)
-    newTxt:DockMargin(0, 2, 6, 2)
-    newTxt.DoClick = function()
-        Derma_StringRequest("New text file", "File name:", "note", function(nm)
-            send_cmd("soft_text_create", { server_id = srv.id, name = nm, content = "" })
-        end)
-    end
-
-    local avOwned = 0
-    for _, inv in ipairs(srv.software or {}) do
-        if tonumber(inv.soft_type) == 7 and tonumber(inv.installed) == 1 then
-            avOwned = math.max(avOwned, tonumber(inv.soft_version) or 0)
+        if SW_ICONS[name] then
+            local iconMat = Material(SW_ICONS[name])
+            surface.SetFont("DermaDefault")
+            local textW = select(1, surface.GetTextSize(name))
+            local iconW, gap = 16, 8
+            b:SetContentAlignment(6)
+            b:SetTextInset(math.floor((140 - (iconW + gap + textW)) / 2), 0)
+            b.PaintOver = function(self, w, h)
+                local x = math.floor((w - (iconW + gap + textW)) / 2)
+                local y = math.floor((h - iconW) / 2)
+                surface.SetDrawColor(255, 255, 255, 255)
+                surface.SetMaterial(iconMat)
+                surface.DrawTexturedRect(x, y, iconW, iconW)
+            end
         end
     end
-    local avScan = vgui.Create("DButton", subbar)
-    avScan:SetText("AV scan")
-    avScan:Dock(RIGHT)
-    avScan:SetWide(90)
-    avScan:DockMargin(0, 2, 6, 2)
-    avScan.DoClick = function()
-        send_cmd("av_scan", { scope = "local", server_id = srv.id })
-    end
-    if avOwned <= 0 then
-        avScan:SetEnabled(false)
-        avScan:SetTooltip("Install an Antivirus first")
-    end
 
-    local hUsed, hTotal = hdd_usage_for(srv)
-    local rUsed, rTotal = ram_usage_for(srv)
-    local xUsed, xTotal = xhd_usage_for(srv)
-    local sidebar = vgui.Create("DPanel", container)
-    sidebar:Dock(RIGHT)
-    sidebar:SetWide(220)
-    sidebar:SetTall(500)
-    sidebar:DockMargin(10, 6, 0, 0)
-    local pies = {}
-    local hdd = usage_pie(sidebar, 110, "HDD", hUsed, hTotal)
-    hdd:Dock(TOP)
-    hdd:DockMargin(0, 4, 0, 8)
-    table.insert(pies, hdd)
-    local ram = usage_pie(sidebar, 110, "RAM", rUsed, rTotal)
-    ram:Dock(TOP)
-    ram:DockMargin(0, 0, 0, 8)
-    table.insert(pies, ram)
-    if xTotal > 0 then
-        local xhd = usage_pie(sidebar, 110, "XHD", xUsed, xTotal)
-        xhd:Dock(TOP)
-        xhd:DockMargin(0, 0, 0, 8)
-        table.insert(pies, xhd)
-    end
-    sidebar:InvalidateLayout(true)
-    container:InvalidateLayout(true)
-    local canvas = container.GetCanvas and container:GetCanvas() or nil
-    if canvas then canvas:InvalidateLayout(true) end
-    for _, p in ipairs(pies) do p:InvalidateLayout(true) end
-
-    local heading = vgui.Create("DPanel", container)
+    local LOCAL_COL_LINES_X = { 290, 370, 450 }
+    local heading = vgui.Create("DPanel", main)
     heading:Dock(TOP)
     heading:SetTall(22)
     heading:DockMargin(0, 8, 0, 0)
+    heading.PaintOver = function(self, w, h)
+        surface.SetDrawColor(80, 80, 80, 180)
+        for _, x in ipairs(LOCAL_COL_LINES_X) do
+            surface.DrawLine(x, 0, x, h)
+        end
+    end
     local function hcol(txt, wide, dock)
         local l = vgui.Create("DLabel", heading)
         l:Dock(dock or LEFT)
@@ -758,22 +1256,24 @@ Tabs["Software"] = function(container)
         l:SetFont("DermaDefaultBold")
         l:SetText("  " .. txt)
     end
-    hcol("File",    180)
-    hcol("Type",    110)
-    hcol("Version", 60)
-    hcol("Size",    60)
-    hcol("Status",  70)
-    hcol("Actions", nil, FILL)
+    hcol("Software name", 290)
+    hcol("Version", 80)
+    hcol("Size", 80)
+    local actionsL = vgui.Create("DLabel", heading)
+    actionsL:Dock(FILL)
+    actionsL:SetDark(true)
+    actionsL:SetFont("DermaDefaultBold")
+    actionsL:SetText("  Actions")
+    actionsL:SetTextInset(466, 0)
 
-    local softScroll = vgui.Create("DScrollPanel", container)
-    softScroll:Dock(TOP)
-    softScroll:SetTall(560)
+    local softScroll = vgui.Create("DScrollPanel", main)
+    softScroll:Dock(FILL)
     softScroll:DockMargin(0, 4, 0, 0)
 
     if MH.OS.SoftwareView == "External HD" then
         local xhds = srv.xhds or {}
         if #xhds == 0 then
-            label(container, "No external drives mounted."):Dock(TOP)
+            label(main, "No external drives mounted."):Dock(TOP)
             return
         end
         for _, s in ipairs(srv.software or {}) do
@@ -1088,6 +1588,14 @@ function MH.OS.OpenRiddlePopup(inet)
     f:SetDeleteOnClose(true)
     f:MakePopup()
 
+    MH.OS.PuzzleTokens = MH.OS.PuzzleTokens or {}
+    MH.OS.PuzzleTokens[tonumber(p.id)] = nil
+    send_cmd("puzzle_start", { puzzle_id = p.id })
+
+    local function puzzle_token()
+        return (MH.OS.PuzzleTokens or {})[tonumber(p.id)]
+    end
+
     if p.name and p.name ~= "" then
         label(f, tostring(p.name), "DermaDefaultBold"):Dock(TOP)
     end
@@ -1101,7 +1609,12 @@ function MH.OS.OpenRiddlePopup(inet)
     qBox:SetValue(tostring(p.question or ""))
 
     local function send_minigame_done()
-        send_cmd("puzzle_solve", { puzzle_id = p.id, kind = p.kind, done = true })
+        local tk = puzzle_token()
+        if not tk then
+            MH.OS.ShowNotify("warn", "Puzzle session not ready. Try again.")
+            return
+        end
+        send_cmd("puzzle_solve", { puzzle_id = p.id, kind = p.kind, done = true, token = tk })
         timer.Simple(0.1, function() if IsValid(f) then f:Close() end end)
     end
 
@@ -1125,7 +1638,12 @@ function MH.OS.OpenRiddlePopup(inet)
         submitB:DockMargin(6, 0, 0, 0)
         submitB:SetText("Submit")
         local function submit()
-            send_cmd("puzzle_solve", { puzzle_id = p.id, answer = answerEntry:GetValue() })
+            local tk = puzzle_token()
+            if not tk then
+                MH.OS.ShowNotify("warn", "Puzzle session not ready. Try again.")
+                return
+            end
+            send_cmd("puzzle_solve", { puzzle_id = p.id, answer = answerEntry:GetValue(), token = tk })
             timer.Simple(0.1, function() if IsValid(f) then f:Close() end end)
         end
         submitB.DoClick = submit
@@ -1164,7 +1682,7 @@ end
 
 Tabs["Internet"] = function(container)
     clear(container)
-    label(container, "Internet", "DermaLarge"):Dock(TOP)
+    tab_header(container, "Internet", current_server())
 
     local inet = MH.OS.State.internet
 
@@ -1175,9 +1693,9 @@ Tabs["Internet"] = function(container)
     local urlLbl = vgui.Create("DLabel", bar)
     urlLbl:SetDark(true)
     urlLbl:SetFont("DermaDefaultBold")
-    urlLbl:SetText("Address:")
+    urlLbl:SetText("IP Address:")
     urlLbl:Dock(LEFT)
-    urlLbl:DockMargin(0, 6, 6, 0)
+    urlLbl:DockMargin(5.5, 4, 6, 0)
     urlLbl:SizeToContents()
     local urlEntry = vgui.Create("DTextEntry", bar)
     urlEntry:Dock(FILL)
@@ -1232,68 +1750,82 @@ Tabs["Internet"] = function(container)
     homeB:SetWide(60)
     homeB:DockMargin(4, 0, 0, 0)
 
-    local sidebar = vgui.Create("DPanel", container)
-    sidebar:Dock(RIGHT)
-    sidebar:SetWide(220)
-    sidebar:SetTall(680)
-    sidebar:DockMargin(10, 0, 0, 0)
-    local function side_header(text)
-        local l = vgui.Create("DLabel", sidebar)
-        l:Dock(TOP)
-        l:DockMargin(6, 8, 6, 2)
-        l:SetDark(true)
-        l:SetFont("DermaDefaultBold")
-        l:SetText(text)
-        l:SizeToContents()
-    end
-    local function side_link(name, ip)
-        local b = vgui.Create("DButton", sidebar)
-        b:SetText(name .. "   " .. ip)
-        b:Dock(TOP)
-        b:DockMargin(6, 2, 6, 0)
-        b:SetTall(24)
-        b.DoClick = function()
-            send_cmd("internet_goto", { ip = ip })
+    local currentMainTab = inet and inet.authed and "Index" or (MH.OS.InternetMainTab or "Index")
+    local showSideCol = not (inet and inet.authed) and currentMainTab == "Index"
+    if showSideCol then
+        local sidebar = vgui.Create("DPanel", container)
+        sidebar:Dock(RIGHT)
+        sidebar:SetWide(220)
+        sidebar:SetTall(680)
+        sidebar:DockMargin(10, 0, 0, 0)
+        local function side_header(text)
+            local l = vgui.Create("DLabel", sidebar)
+            l:Dock(TOP)
+            l:DockMargin(6, 8, 6, 2)
+            l:SetDark(true)
+            l:SetFont("DermaDefaultBold")
+            l:SetText(text)
+            l:SizeToContents()
         end
-    end
+        local function side_link(name, ip)
+            local b = vgui.Create("DButton", sidebar)
+            b:SetText(name .. "   " .. ip)
+            b:Dock(TOP)
+            b:DockMargin(6, 2, 6, 0)
+            b:SetTall(24)
+            b.DoClick = function()
+                send_cmd("internet_goto", { ip = ip })
+            end
+        end
 
-    local disc = MH.OS.State.discovered or {}
-    local important, generic = {}, {}
-    local importantNames = {
-        ["First Whois"] = true, ["Second Whois"] = true, ["Third Whois"] = true,
-        ["Fourth Whois"] = true,
-        ["Download Center"] = true, ["ISP"] = true,
-        ["Bitcoin Market"] = true, ["Sourcenet"] = true,
-        ["Employers"] = true, ["MSA"] = true,
-    }
-    for _, s in ipairs(disc) do
-        local nm = tostring(s.name or "")
-        local isBank = string.find(string.lower(nm), "bank") ~= nil
-        if importantNames[nm] or isBank then
-            table.insert(important, s)
-        else
-            table.insert(generic, s)
+        local disc = MH.OS.State.discovered or {}
+        local important, generic = {}, {}
+        local importantNames = {
+            ["First Whois"] = true, ["Second Whois"] = true, ["Third Whois"] = true,
+            ["Fourth Whois"] = true,
+            ["Download Center"] = true, ["ISP"] = true,
+            ["Bitcoin Market"] = true, ["Sourcenet"] = true,
+            ["Employers"] = true, ["MSA"] = true,
+        }
+        for _, s in ipairs(disc) do
+            local nm = tostring(s.name or "")
+            local isBank = string.find(string.lower(nm), "bank") ~= nil
+            if importantNames[nm] or isBank then
+                table.insert(important, s)
+            else
+                table.insert(generic, s)
+            end
         end
-    end
-    local function by_name(a, b)
-        return tostring(a.name or ""):lower() < tostring(b.name or ""):lower()
-    end
-    table.sort(important, by_name)
-    side_header("Important IPs")
-    if #important == 0 then
-        local l = vgui.Create("DLabel", sidebar)
-        l:Dock(TOP) l:DockMargin(10, 2, 6, 0) l:SetDark(true)
-        l:SetText("None discovered yet.") l:SizeToContents()
-    else
-        for _, s in ipairs(important) do side_link(s.name, s.ip) end
-    end
-    if #generic > 0 then
-        side_header("History")
-        local shown = 0
-        for _, s in ipairs(generic) do
-            if shown >= 5 then break end
-            side_link(s.name, s.ip)
-            shown = shown + 1
+        local function by_name(a, b)
+            return tostring(a.name or ""):lower() < tostring(b.name or ""):lower()
+        end
+        table.sort(important, by_name)
+        side_header("Recently visited")
+        if #generic == 0 then
+            local l = vgui.Create("DLabel", sidebar)
+            l:Dock(TOP)
+            l:DockMargin(10, 2, 6, 0)
+            l:SetDark(true)
+            l:SetText("Nothing yet.")
+            l:SizeToContents()
+        else
+            local shown = 0
+            for _, s in ipairs(generic) do
+                if shown >= 5 then break end
+                side_link(s.name, s.ip)
+                shown = shown + 1
+            end
+        end
+        side_header("Important IPs")
+        if #important == 0 then
+            local l = vgui.Create("DLabel", sidebar)
+            l:Dock(TOP)
+            l:DockMargin(10, 2, 6, 0)
+            l:SetDark(true)
+            l:SetText("None discovered yet.")
+            l:SizeToContents()
+        else
+            for _, s in ipairs(important) do side_link(s.name, s.ip) end
         end
     end
 
@@ -1305,15 +1837,70 @@ Tabs["Internet"] = function(container)
         return
     end
 
-    local topInfo = vgui.Create("DLabel", body)
-    topInfo:Dock(TOP)
-    topInfo:SetDark(true)
-    topInfo:SetFont("DermaDefaultBold")
-    topInfo:SetText("Target: " .. tostring(inet.ip) .. "  (" .. tostring(inet.name) .. ")" ..
-        (inet.authed and "  [Logged in]" or "  [Not authenticated]"))
+    local tabList = { "Index", "Login", "Hack" }
+    local bankSessActive = false
+    if inet.is_bank then
+        local sess = MH.OS.State.bank_session
+        if sess and tonumber(sess.bank_id or 0) == tonumber(inet.id or 0) then
+            bankSessActive = true
+            tabList = { "Index", "Login", "Hack", "Account overview" }
+        else
+            tabList = { "Index", "Login", "Hack", "Account login", "Hack account" }
+        end
+    end
+    local tabSet = {}
+    for _, n in ipairs(tabList) do tabSet[n] = true end
+    if not inet.authed then
+        local defaultTab = bankSessActive and "Account overview" or "Index"
+        MH.OS.InternetMainTab = MH.OS.InternetMainTab or defaultTab
+        if not tabSet[MH.OS.InternetMainTab] then MH.OS.InternetMainTab = defaultTab end
+        local mainTabBar = vgui.Create("DPanel", body)
+        mainTabBar:Dock(TOP)
+        mainTabBar:SetTall(28)
+        mainTabBar:DockMargin(0, 6, 0, 0)
+        local TAB_ICONS = {
+            ["Index"]            = "icon16/application_side_boxes.png",
+            ["Login"]            = "icon16/application_side_expand.png",
+            ["Hack"]             = "icon16/application_xp_terminal.png",
+            ["Account login"]    = "icon16/user_suit.png",
+            ["Hack account"]     = "icon16/user_gray.png",
+            ["Account overview"] = "icon16/creditcards.png",
+        }
+        for _, name in ipairs(tabList) do
+            local b = vgui.Create("DButton", mainTabBar)
+            b:SetText(name)
+            if TAB_ICONS[name] then
+                local iconMat = Material(TAB_ICONS[name])
+                surface.SetFont("DermaDefault")
+                local textW = select(1, surface.GetTextSize(name))
+                local iconW, gap = 16, 8
+                b:SetContentAlignment(6)
+                b:SetTextInset(math.floor((120 - (iconW + gap + textW)) / 2), 0)
+                b.PaintOver = function(self, w, h)
+                    local x = math.floor((w - (iconW + gap + textW)) / 2)
+                    local y = math.floor((h - iconW) / 2)
+                    surface.SetDrawColor(255, 255, 255, 255)
+                    surface.SetMaterial(iconMat)
+                    surface.DrawTexturedRect(x, y, iconW, iconW)
+                end
+            end
+            b:Dock(LEFT)
+            b:SetWide(120)
+            b:DockMargin(0, 0, 4, 0)
+            b.DoClick = function()
+                MH.OS.InternetMainTab = name
+                if MH.OS.Rebuild then MH.OS.Rebuild() end
+            end
+        end
+    end
 
+    local mainTab = inet.authed and "Index" or (MH.OS.InternetMainTab or "Index")
     local whoisTier = ({ ["First Whois"] = 1, ["Second Whois"] = 2, ["Third Whois"] = 3, ["Fourth Whois"] = 4 })[tostring(inet.name)]
-    if whoisTier then
+    if mainTab == "Index" then
+        local tagText, tagVariant = get_server_tag(inet)
+        server_tag(body, tagText, tagVariant)
+    end
+    if mainTab == "Index" and whoisTier then
         label(body, tostring(inet.name) .. " directory", "DermaDefaultBold"):Dock(TOP)
         local svcs = MH.OS.State.public_services or {}
         local discoveredIds = {}
@@ -1327,11 +1914,13 @@ Tabs["Internet"] = function(container)
                 { key = "PUZZLE_1",  blurb = "First puzzle." },
                 { key = "BANK1",     blurb = "Your everyday provider for your financial needs." },
                 { key = "EMPLOYERS", blurb = "Some believe the fate of our worlds is inflexible." },
-                { key = "SOURCENET",   blurb = "Keeping you safe since 1984." },
+                { key = "SOURCENET", blurb = "Keeping you safe since 1984." },
                 { key = "ISP",       blurb = "Your Internet Service Provider" },
                 { key = "MSA",       blurb = "Metastruct Security Agency." },
                 { key = "PUZZLE_5",  blurb = "Fifth puzzle." },
-                { key = "WHOIS2",    blurb = "Second Whois" },
+                { key = "WHOIS2",    blurb = "Second Whois (testing)",  ungated = true },
+                { key = "WHOIS3",    blurb = "Third Whois (testing)",  ungated = true },
+                { key = "WHOIS4",    blurb = "Fourth Whois (testing)", ungated = true },
             },
             [2] = {
                 { key = "BANK2",     blurb = "Banking refined." },
@@ -1350,7 +1939,7 @@ Tabs["Internet"] = function(container)
                 { key = "BITCOIN",   blurb = "Your Crypto Marketplace" },
                 { key = "BANK5",     blurb = "Only for the most distinguished clients." },
                 { key = "PUZZLE_47", blurb = "Final puzzle of the chain." },
-                { key = "MD",        blurb = "MD - corporate target with secrets." },
+                { key = "MD",        blurb = "Black Mesa - corporate target with secrets." },
                 { key = "GOOSECORP", blurb = "GooseCorp - endgame corporate hit." },
                 { key = "WHOIS4",    blurb = "Fourth Whois" },
             },
@@ -1365,8 +1954,8 @@ Tabs["Internet"] = function(container)
         local visible = {}
         for _, e in ipairs(entries) do
             local svc = svcs[e.key]
-            local gated = (e.key == "WHOIS2") or (e.key == "WHOIS3") or (e.key == "WHOIS4")
-                or (string.sub(e.key, 1, 7) == "PUZZLE_" and e.key ~= "PUZZLE_1")
+            local gated = not e.ungated and ((e.key == "WHOIS2") or (e.key == "WHOIS3") or (e.key == "WHOIS4")
+                or (string.sub(e.key, 1, 7) == "PUZZLE_" and e.key ~= "PUZZLE_1"))
             if svc and (not gated or discoveredIds[tonumber(svc.id)]) then
                 visible[#visible + 1] = { svc = svc, blurb = e.blurb }
             end
@@ -1425,37 +2014,246 @@ Tabs["Internet"] = function(container)
         end
     end
 
-    if inet.is_bitcoin then
-        local p = MH.OS.State.player or {}
-        label(body, "Bitcoin Market", "DermaLarge"):Dock(TOP)
+    if inet.is_bitcoin and mainTab == "Index" then
+        local btcWallet = MH.OS.State.btc or {}
+        local walletAddr = tostring(btcWallet.address or "")
+        local walletKey  = tostring(btcWallet.priv_key or "")
+        local btcBuyRate = MH.Data.BtcBuyRate or 81650
+        local btcSellRate = MH.Data.BtcSellRate or 81624
 
-        label(body, "Your wallet", "DermaDefaultBold"):Dock(TOP)
-        label(body, "Address: " .. tostring(p.btc_address or "unassigned")):Dock(TOP)
-        label(body, "Balance: " .. string.format("%.7f", tonumber(p.bitcoin or 0)) .. " BTC"):Dock(TOP)
+        local cols = vgui.Create("DPanel", body)
+        cols:Dock(TOP)
+        cols:SetTall(220)
+        cols:DockMargin(10, 8, 10, 0)
+        cols.Paint = function() end
 
-        label(body, "Buy BTC   Rate: $81,629 / BTC", "DermaDefaultBold"):Dock(TOP)
-        local xrow = vgui.Create("DPanel", body)
-        xrow:Dock(TOP) xrow:SetTall(32) xrow:DockMargin(0, 6, 0, 0)
-        local xamt = vgui.Create("DTextEntry", xrow)
-        xamt:Dock(LEFT) xamt:SetWide(140) xamt:SetPlaceholderText("cash amount")
-        local buyB = button(xrow, "Buy BTC", function()
-            send_cmd("btc_buy", { cash = tonumber(xamt:GetValue()) })
-        end)
-        buyB:Dock(LEFT) buyB:SetWide(130) buyB:DockMargin(4, 0, 0, 0)
+        local function green_banner(parent, text)
+            local banner = vgui.Create("DPanel", parent)
+            banner:Dock(TOP)
+            banner:SetTall(28)
+            banner:DockMargin(10, 8, 10, 0)
+            banner.Paint = function(self, w, h)
+                surface.SetDrawColor(220, 240, 220, 255)
+                surface.DrawRect(0, 0, w, h)
+                surface.SetDrawColor(190, 220, 190, 255)
+                surface.DrawOutlinedRect(0, 0, w, h)
+                draw.SimpleText(text, "DermaDefault", w / 2, h / 2, Color(60, 120, 60),
+                    TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
+            end
+            return banner
+        end
 
-        label(body, "Transfer BTC to another player", "DermaDefaultBold"):Dock(TOP)
-        local btrow = vgui.Create("DPanel", body)
-        btrow:Dock(TOP) btrow:SetTall(32) btrow:DockMargin(0, 6, 0, 0)
-        local btTo = vgui.Create("DTextEntry", btrow)
-        btTo:Dock(LEFT) btTo:SetWide(200) btTo:SetPlaceholderText("recipient (SteamID64 or nick)")
-        local btAmt = vgui.Create("DTextEntry", btrow)
-        btAmt:Dock(LEFT) btAmt:SetWide(120) btAmt:SetPlaceholderText("BTC amount") btAmt:DockMargin(4, 0, 0, 0)
-        local btSend = button(btrow, "Send", function()
-            send_cmd("btc_transfer", { to = btTo:GetValue(), amount = tonumber(btAmt:GetValue()) })
-        end)
-        btSend:Dock(LEFT) btSend:SetWide(80) btSend:DockMargin(4, 0, 0, 0)
+        local function card_box(parent, iconPath, title)
+            local box = vgui.Create("DPanel", parent)
+            local head = vgui.Create("DPanel", box)
+            head:Dock(TOP)
+            head:SetTall(28)
+            local hIcon = vgui.Create("DImage", head)
+            hIcon:SetPos(8, 6)
+            hIcon:SetSize(16, 16)
+            hIcon:SetImage(iconPath)
+            local hLbl = vgui.Create("DLabel", head)
+            hLbl:SetPos(30, 6)
+            hLbl:SetFont("DermaDefaultBold")
+            hLbl:SetDark(true)
+            hLbl:SetText(title)
+            hLbl:SizeToContents()
+            return box
+        end
+
+        local actBox = card_box(cols, "icon16/coins.png", "Bitcoin Actions")
+        actBox:Dock(LEFT)
+        actBox:DockMargin(0, 0, 8, 0)
+        local btcLoggedIn = MH.OS.State.btc_logged_in and true or false
+        local loginBox = card_box(cols, "icon16/application_osx_terminal.png",
+            btcLoggedIn and "Wallet Overview" or "Wallet Login")
+        loginBox:Dock(FILL)
+
+        cols.PerformLayout = function(self, w, h)
+            local lw = math.floor(w * 0.58)
+            actBox:SetWide(lw)
+        end
+
+        green_banner(actBox, "Only public information is logged!")
+
+        local btnRow = vgui.Create("DPanel", actBox)
+        btnRow:Dock(FILL)
+        btnRow:DockMargin(10, 10, 10, 10)
+        btnRow.Paint = function() end
+
+        local function action_tile(parent, iconPath, title, subText, subColor, onClick)
+            local tile = vgui.Create("DButton", parent)
+            tile:SetText("")
+            local tileMat = Material(iconPath)
+            tile.Paint = function(self, w, h)
+                derma.SkinHook("Paint", "Button", self, w, h)
+                surface.SetDrawColor(255, 255, 255, 255)
+                surface.SetMaterial(tileMat)
+                surface.DrawTexturedRect(math.floor(w / 2 - 16), 20, 32, 32)
+                local sk = self:GetSkin()
+                local tc = (sk and sk.Colours and sk.Colours.Label and sk.Colours.Label.Default) or color_black
+                draw.SimpleText(title, "DermaDefaultBold", w / 2, 68, tc,
+                    TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
+                draw.SimpleText(subText, "DermaDefault", w / 2, 86, subColor or tc,
+                    TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
+            end
+            tile.DoClick = onClick
+            return tile
+        end
+
+        local function ensure_btc_login()
+            if not MH.OS.State.btc_logged_in then
+                MH.OS.ShowNotify("warn", "Please login first")
+                return false
+            end
+            return true
+        end
+
+        local buyTile = action_tile(btnRow, "icon16/money_dollar.png",
+            "Buy Bitcoins", "for $" .. fmt_cash(btcBuyRate), Color(80, 140, 80), function()
+                if not ensure_btc_login() then return end
+                Derma_StringRequest("Buy Bitcoins", "Cash to spend (USD):", "",
+                    function(txt) send_cmd("btc_buy", { cash = tonumber(txt) }) end)
+            end)
+
+        local sellTile = action_tile(btnRow, "icon16/money.png",
+            "Sell Bitcoins", "for $" .. fmt_cash(btcSellRate), Color(80, 140, 80), function()
+                if not ensure_btc_login() then return end
+                Derma_StringRequest("Sell Bitcoins", "BTC to sell:", "",
+                    function(txt) send_cmd("btc_sell", { amount = tonumber(txt) }) end)
+            end)
+
+        local xferTile = action_tile(btnRow, "icon16/user_go.png",
+            "Transfer Bitcoins", "No fees!", Color(120, 120, 120), function()
+                if not ensure_btc_login() then return end
+                Derma_StringRequest("Transfer Bitcoins", "Recipient wallet address:", "",
+                    function(to)
+                        Derma_StringRequest("Transfer Bitcoins", "BTC amount:", "",
+                            function(amt) send_cmd("btc_transfer", { to = to, amount = tonumber(amt) }) end)
+                    end)
+            end)
+
+        local tileWide = 140
+        local tileTall = 100
+        local tileGap = 10
+        btnRow.PerformLayout = function(self, w, h)
+            local total = tileWide * 3 + tileGap * 2
+            local x = math.floor((w - total) / 2)
+            local y = math.floor((h - tileTall) / 2)
+            buyTile:SetSize(tileWide, tileTall)
+            buyTile:SetPos(x, y)
+            sellTile:SetSize(tileWide, tileTall)
+            sellTile:SetPos(x + tileWide + tileGap, y)
+            xferTile:SetSize(tileWide, tileTall)
+            xferTile:SetPos(x + (tileWide + tileGap) * 2, y)
+        end
+
+        if btcLoggedIn then
+            local overviewBody = vgui.Create("DPanel", loginBox)
+            overviewBody:Dock(FILL)
+            overviewBody:DockPadding(10, 14, 10, 10)
+            local addrHdr = vgui.Create("DLabel", overviewBody)
+            addrHdr:Dock(TOP)
+            addrHdr:SetTall(20)
+            addrHdr:SetFont("DermaDefaultBold")
+            addrHdr:SetDark(true)
+            addrHdr:SetContentAlignment(5)
+            addrHdr:SetText("Address:")
+            local addrVal = vgui.Create("DLabel", overviewBody)
+            addrVal:Dock(TOP)
+            addrVal:SetTall(20)
+            addrVal:SetDark(true)
+            addrVal:SetContentAlignment(5)
+            addrVal:SetText(walletAddr)
+            local btcHdr = vgui.Create("DLabel", overviewBody)
+            btcHdr:Dock(TOP)
+            btcHdr:SetTall(20)
+            btcHdr:DockMargin(0, 12, 0, 0)
+            btcHdr:SetFont("DermaDefaultBold")
+            btcHdr:SetDark(true)
+            btcHdr:SetContentAlignment(5)
+            btcHdr:SetText("Bitcoins:")
+            local btcVal = vgui.Create("DLabel", overviewBody)
+            btcVal:Dock(TOP)
+            btcVal:SetTall(20)
+            btcVal:SetDark(true)
+            btcVal:SetContentAlignment(5)
+            local playerBtc = tonumber((MH.OS.State.player or {}).bitcoin or 0) or 0
+            btcVal:SetText(string.format("%.7f", playerBtc) .. " BTC")
+            local btnWrap = vgui.Create("DPanel", overviewBody)
+            btnWrap:Dock(TOP)
+            btnWrap:SetTall(34)
+            btnWrap:DockMargin(0, 10, 0, 0)
+            btnWrap.Paint = function() end
+            local logoutBtn = vgui.Create("DButton", btnWrap)
+            logoutBtn:SetSize(100, 28)
+            btnWrap.PerformLayout = function(self, w, h)
+                logoutBtn:SetPos(math.floor((w - 100) / 2), 0)
+            end
+            logoutBtn:SetText("Log out")
+            logoutBtn:SetTextColor(color_white)
+            logoutBtn.Paint = function(self, w, h)
+                local col = self:IsHovered() and Color(60, 150, 185) or Color(70, 160, 195)
+                surface.SetDrawColor(col.r, col.g, col.b, 255)
+                surface.DrawRect(0, 0, w, h)
+            end
+            logoutBtn.DoClick = function()
+                send_cmd("btc_internet_logout", { ip = tostring(inet.ip or "") })
+            end
+            return
+        end
+
+        green_banner(loginBox, "Anonymous login!")
+
+        local loginBody = vgui.Create("DPanel", loginBox)
+        loginBody:Dock(FILL)
+        loginBody:DockMargin(10, 10, 10, 10)
+        loginBody.Paint = function() end
+
+        local function field_row(parent, iconPath, value, mask)
+            local row = vgui.Create("DPanel", parent)
+            row:Dock(TOP)
+            row:SetTall(28)
+            row:DockMargin(0, 0, 0, 6)
+            row.Paint = function() end
+            local iconPanel = vgui.Create("DPanel", row)
+            iconPanel:Dock(LEFT)
+            iconPanel:SetWide(28)
+            local iconMat = Material(iconPath)
+            iconPanel.Paint = function(self, w, h)
+                surface.SetDrawColor(255, 255, 255, 255)
+                surface.SetMaterial(iconMat)
+                surface.DrawTexturedRect(math.floor((w - 16) / 2), math.floor((h - 16) / 2), 16, 16)
+            end
+            local entry = vgui.Create("DTextEntry", row)
+            entry:Dock(FILL)
+            entry:DockMargin(0, 0, 0, 0)
+            if mask then
+                install_password_mask(entry, value)
+            else
+                entry:SetText(value or "")
+            end
+            return entry
+        end
+
+        local addrEntry = field_row(loginBody, "icon16/user.png", walletAddr, false)
+        local keyEntry  = field_row(loginBody, "icon16/key.png",  walletKey,  true)
+
+        local loginBtn = vgui.Create("DButton", loginBody)
+        loginBtn:Dock(TOP)
+        loginBtn:SetTall(28)
+        loginBtn:DockMargin(0, 4, 0, 0)
+        loginBtn:SetText("Login")
+        loginBtn.DoClick = function()
+            send_cmd("btc_internet_login", {
+                ip = tostring(inet.ip or ""),
+                addr = addrEntry:GetValue(),
+                key = keyEntry.GetRealValue and keyEntry:GetRealValue() or keyEntry:GetValue(),
+            })
+        end
         return
     end
+
 
     local function render_target_processes(parent, headerText)
         local targetId = tonumber(inet.id or 0)
@@ -1470,43 +2268,592 @@ Tabs["Internet"] = function(container)
         for _, p in ipairs(matches) do proc_row(parent, p) end
     end
 
-    if not inet.authed then
-        label(body, "Login or attempt to Bruteforce / Exploit to gain access.", "DermaDefault"):Dock(TOP)
-        local loginRow = vgui.Create("DPanel", body)
-        loginRow:Dock(TOP)
-        loginRow:SetTall(32)
-        loginRow:DockMargin(0, 8, 0, 0)
-        local userEntry = vgui.Create("DTextEntry", loginRow)
-        userEntry:Dock(LEFT)
-        userEntry:SetWide(140)
-        userEntry:SetPlaceholderText("username (root)")
-        local passEntry = vgui.Create("DTextEntry", loginRow)
-        passEntry:Dock(FILL)
-        passEntry:DockMargin(4, 0, 0, 0)
-        passEntry:SetPlaceholderText("password")
+    if mainTab == "Login" and not inet.authed then
+        local centerWrap = vgui.Create("DPanel", body)
+        centerWrap:Dock(TOP)
+        centerWrap:SetTall(200)
+        centerWrap:DockMargin(0, 40, 0, 0)
+        centerWrap.Paint = function() end
+
+        local boxWide = 440
+        local loginBox = vgui.Create("DPanel", centerWrap)
+        loginBox:SetSize(boxWide, 180)
+        centerWrap.PerformLayout = function(self)
+            loginBox:SetPos(math.floor((self:GetWide() - boxWide) / 2), 0)
+        end
+
+        local prompt = vgui.Create("DLabel", loginBox)
+        prompt:Dock(TOP)
+        prompt:SetTall(28)
+        prompt:DockMargin(10, 14, 10, 4)
+        prompt:SetDark(true)
+        prompt:SetContentAlignment(5)
+        prompt:SetText("Enter username and password to continue.")
+
         local isDC = tostring(inet.name) == "Download Center"
         local hasSaved = inet.saved_pass and tostring(inet.saved_pass) ~= ""
-        if hasSaved then
-            userEntry:SetText("root")
-            passEntry:SetText(tostring(inet.saved_pass))
-        elseif isDC then
-            userEntry:SetText("download")
-            passEntry:SetText("download")
-        else
-            userEntry:SetText("root")
-        end
-        local loginB = button(loginRow, "Login", function()
-            send_cmd("internet_login", { user = userEntry:GetValue(), pass = passEntry:GetValue() })
-        end)
-        loginB:Dock(RIGHT)
-        loginB:SetWide(80)
-        loginB:DockMargin(4, 0, 0, 0)
 
+        local function iconRow(parent, iconMat, placeholder, initial)
+            local row = vgui.Create("DPanel", parent)
+            row:Dock(TOP)
+            row:SetTall(28)
+            row:DockMargin(80, 6, 80, 0)
+            local ic = vgui.Create("DPanel", row)
+            ic:Dock(LEFT)
+            ic:SetWide(28)
+            local mat = Material(iconMat)
+            ic.Paint = function(self, w, h)
+                surface.SetDrawColor(255, 255, 255, 255)
+                surface.SetMaterial(mat)
+                surface.DrawTexturedRect(math.floor((w - 16) / 2), math.floor((h - 16) / 2), 16, 16)
+            end
+            local entry = vgui.Create("DTextEntry", row)
+            entry:Dock(FILL)
+            entry:SetPlaceholderText(placeholder)
+            if initial then entry:SetText(initial) end
+            return entry
+        end
+
+        local userDefault = hasSaved and "root" or (isDC and "download" or "root")
+        local passDefault = hasSaved and tostring(inet.saved_pass) or (isDC and "download" or "")
+        local userEntry = iconRow(loginBox, "icon16/user.png", "Username", userDefault)
+        local passEntry = iconRow(loginBox, "icon16/key.png", "Password", "")
+        install_password_mask(passEntry, passDefault)
+
+        local btnRow = vgui.Create("DPanel", loginBox)
+        btnRow:Dock(BOTTOM)
+        btnRow:SetTall(44)
+        btnRow:DockMargin(10, 0, 10, 10)
+        btnRow.Paint = function() end
+        local loginB = vgui.Create("DButton", btnRow)
+        loginB:Dock(RIGHT)
+        loginB:SetWide(100)
+        loginB:SetText("Login")
+        loginB.DoClick = function()
+            send_cmd("internet_login", { user = userEntry:GetValue(), pass = passEntry:GetRealValue() })
+        end
+        return
+    end
+
+    if mainTab == "Hack" and not inet.authed then
+        local attackerSoft = {}
+        local primary = (MH.OS.State.servers or {})[1]
+        for _, s in ipairs(primary and primary.software or {}) do
+            local t = tonumber(s.soft_type)
+            local v = tonumber(s.soft_version) or 0
+            if (attackerSoft[t] or 0) < v then attackerSoft[t] = v end
+        end
+        local certLvl = tonumber((MH.OS.State.player or {}).cert_level or 0) or 0
+
+        local prompt = vgui.Create("DLabel", body)
+        prompt:Dock(TOP)
+        prompt:SetTall(24)
+        prompt:DockMargin(0, 40, 0, 10)
+        prompt:SetDark(true)
+        prompt:SetContentAlignment(5)
+        prompt:SetText("Choose your attack method:")
+
+        local tileWide = 180
+        local tileTall = 120
+        local gap = 30
+        local tiles = vgui.Create("DPanel", body)
+        tiles:Dock(TOP)
+        tiles:SetTall(tileTall)
+        tiles.Paint = function() end
+
+        local function build_tile(parent, title, iconText, headline, ok, disabledReason, onClick, iconMat, headlineIcon)
+            local tile = vgui.Create(ok and "DButton" or "DPanel", parent)
+            tile:SetSize(tileWide, tileTall)
+            if ok then
+                tile:SetText("")
+                tile.Paint = function(self, w, h)
+                    derma.SkinHook("Paint", "Panel", self, w, h)
+                end
+                tile.DoClick = onClick
+            end
+            if iconMat then
+                local iconHolder = vgui.Create("DPanel", tile)
+                iconHolder:Dock(TOP)
+                iconHolder:SetTall(42)
+                iconHolder:DockMargin(10, 12, 10, 0)
+                iconHolder.Paint = function() end
+                local img = vgui.Create("DImage", iconHolder)
+                img:SetMaterial(Material(iconMat))
+                img:SetSize(32, 32)
+                iconHolder.PerformLayout = function(self)
+                    img:SetPos(math.floor((self:GetWide() - 32) / 2), math.floor((self:GetTall() - 32) / 2))
+                end
+            else
+                local ic = vgui.Create("DLabel", tile)
+                ic:Dock(TOP)
+                ic:SetTall(42)
+                ic:DockMargin(10, 12, 10, 0)
+                ic:SetDark(true)
+                ic:SetFont("DermaLarge")
+                ic:SetContentAlignment(5)
+                ic:SetText(iconText)
+            end
+            local t = vgui.Create("DLabel", tile)
+            t:Dock(TOP)
+            t:SetTall(20)
+            t:DockMargin(10, 4, 10, 0)
+            t:SetDark(true)
+            t:SetFont("DermaDefaultBold")
+            t:SetContentAlignment(5)
+            t:SetText(title)
+            if headlineIcon then
+                local segments
+                if type(headlineIcon) == "table" then
+                    segments = headlineIcon
+                else
+                    segments = { { icon = headlineIcon, text = tostring(headline or "") } }
+                end
+                local iconSize = 16
+                local gap = 4
+                local segGap = 10
+                surface.SetFont("DermaDefault")
+                local parts = {}
+                local totalW = 0
+                for i, seg in ipairs(segments) do
+                    local tw = select(1, surface.GetTextSize(tostring(seg.text or "")))
+                    local w = iconSize + gap + tw
+                    parts[i] = { seg = seg, tw = tw, w = w }
+                    totalW = totalW + w
+                    if i > 1 then totalW = totalW + segGap end
+                end
+                local hRow = vgui.Create("DPanel", tile)
+                hRow:Dock(TOP)
+                hRow:SetTall(16)
+                hRow:DockMargin(10, 2, 10, 0)
+                hRow.Paint = function() end
+                for _, p in ipairs(parts) do
+                    p.img = vgui.Create("DImage", hRow)
+                    p.img:SetMaterial(Material(p.seg.icon))
+                    p.img:SetSize(iconSize, iconSize)
+                    p.lbl = vgui.Create("DLabel", hRow)
+                    if p.seg.color then
+                        p.lbl:SetDark(false)
+                        p.lbl:SetTextColor(p.seg.color)
+                    else
+                        p.lbl:SetDark(true)
+                    end
+                    p.lbl:SetText(tostring(p.seg.text or ""))
+                    p.lbl:SizeToContents()
+                end
+                hRow.PerformLayout = function(self)
+                    local x = math.floor((self:GetWide() - totalW) / 2)
+                    for i, p in ipairs(parts) do
+                        if i > 1 then x = x + segGap end
+                        p.img:SetPos(x, 0)
+                        p.lbl:SetPos(x + iconSize + gap, math.floor((16 - p.lbl:GetTall()) / 2))
+                        x = x + p.w
+                    end
+                end
+            else
+                local h = vgui.Create("DLabel", tile)
+                h:Dock(TOP)
+                h:SetTall(16)
+                h:DockMargin(10, 2, 10, 0)
+                h:SetDark(true)
+                h:SetContentAlignment(5)
+                h:SetText(headline)
+            end
+            if not ok then
+                local d = vgui.Create("DLabel", tile)
+                d:Dock(TOP)
+                d:SetTall(16)
+                d:DockMargin(10, 2, 10, 0)
+                d:SetDark(false)
+                d:SetTextColor(Color(200, 80, 80))
+                d:SetContentAlignment(5)
+                d:SetText(disabledReason or "Unavailable")
+            end
+            if ok then
+                tile:SetCursor("hand")
+                local function propagate(p)
+                    if not IsValid(p) then return end
+                    p:SetMouseInputEnabled(false)
+                    for _, child in ipairs(p:GetChildren() or {}) do propagate(child) end
+                end
+                for _, child in ipairs(tile:GetChildren() or {}) do propagate(child) end
+            end
+            return tile
+        end
+
+        local crackerV = attackerSoft[1] or 0
+        local tgtHasher = tonumber(inet.target_hasher or 0) or 0
+        local tgtFirewall = tonumber(inet.target_firewall or 0) or 0
+        local crackOk = crackerV > 0 and crackerV >= tgtHasher
+        local crackReason
+        if crackerV <= 0 then crackReason = "No Cracker."
+        elseif crackerV < tgtHasher then crackReason = "Cracker not high enough level" end
+        local crackerText = crackerV > 0 and MH.Data.DotVersion(crackerV) or "-"
+        local crackerColor
+        if crackerV <= 0 then
+            crackerColor = Color(200, 60, 60)
+        elseif crackOk then
+            crackerColor = color_white
+        end
+        local bruteTile = build_tile(tiles,
+            "Bruteforce attack",
+            nil,
+            nil,
+            crackOk,
+            crackReason,
+            function() send_cmd("crack_ip", { ip = inet.ip, method = "bruteforce" }) end,
+            "icon16/lock_open.png",
+            { { icon = "icon16/application_key.png", text = crackerText, color = crackerColor } }
+        )
+
+        local ftpV = attackerSoft[13] or 0
+        local sshV = attackerSoft[14] or 0
+        local portV = attackerSoft[3] or 0
+        local bestExploit = math.max(ftpV, sshV)
+        local haveExploit = ftpV > 0 or sshV > 0
+        local exploitOk = certLvl >= 3 and portV > 0 and haveExploit and bestExploit >= tgtFirewall
+        local reason
+        if portV <= 0 then reason = "No Port Scan."
+        elseif not haveExploit then reason = "No Exploits."
+        elseif bestExploit < tgtFirewall then reason = "Exploit not high enough level" end
+        local method = ftpV >= sshV and ftpV > 0 and "ftp_exploit" or "ssh_exploit"
+        local ftpText = ftpV > 0 and MH.Data.DotVersion(ftpV) or "-"
+        local sshText = sshV > 0 and MH.Data.DotVersion(sshV) or "-"
+        local ftpColor
+        if ftpV <= 0 then
+            ftpColor = Color(200, 60, 60)
+        elseif exploitOk and ftpV >= tgtFirewall then
+            ftpColor = color_white
+        end
+        local sshColor
+        if sshV <= 0 then
+            sshColor = Color(200, 60, 60)
+        elseif exploitOk and sshV >= tgtFirewall then
+            sshColor = color_white
+        end
+        local exploitTile = build_tile(tiles,
+            "Exploit attack",
+            nil,
+            nil,
+            exploitOk,
+            reason,
+            function() send_cmd("crack_ip", { ip = inet.ip, method = method }) end,
+            "icon16/bug.png",
+            {
+                { icon = "icon16/folder_bug.png",    text = ftpText, color = ftpColor },
+                { icon = "icon16/monitor_error.png", text = sshText, color = sshColor },
+            }
+        )
+
+        tiles.PerformLayout = function(self)
+            local totalW = tileWide * 2 + gap
+            local x = math.floor((self:GetWide() - totalW) / 2)
+            bruteTile:SetPos(x, 0)
+            exploitTile:SetPos(x + tileWide + gap, 0)
+        end
+
+        return
+    end
+
+    if mainTab == "Account login" and inet.is_bank then
+        local wrap = vgui.Create("DPanel", body)
+        wrap:Dock(TOP)
+        wrap:SetTall(220)
+        wrap:DockMargin(0, 40, 0, 0)
+        wrap.Paint = function() end
+
+        local boxWide = 440
+        local box = vgui.Create("DPanel", wrap)
+        box:SetSize(boxWide, 180)
+        wrap.PerformLayout = function(self)
+            box:SetPos(math.floor((self:GetWide() - boxWide) / 2), 0)
+        end
+
+        local prompt = vgui.Create("DLabel", box)
+        prompt:Dock(TOP)
+        prompt:SetTall(28)
+        prompt:DockMargin(10, 14, 10, 4)
+        prompt:SetDark(true)
+        prompt:SetContentAlignment(5)
+        prompt:SetText("Enter account number and password to continue.")
+
+        local savedAcc, savedPass = "", ""
+        for _, b in ipairs(MH.OS.State.banks or {}) do
+            if tonumber(b.bank_npc or 0) == tonumber(inet.id or 0) then
+                savedAcc = tostring(b.acc_num or "")
+                savedPass = tostring(b.acc_pass or "")
+                break
+            end
+        end
+        if savedAcc == "" then
+            for _, h in ipairs(MH.OS.State.hacked_banks or {}) do
+                if tonumber(h.bank_server_id or 0) == tonumber(inet.id or 0) then
+                    savedAcc = tostring(h.acc_num or "")
+                    savedPass = tostring(h.acc_pass or "")
+                    break
+                end
+            end
+        end
+
+        local function iconRow(parent, iconMat, placeholder, initial)
+            local row = vgui.Create("DPanel", parent)
+            row:Dock(TOP)
+            row:SetTall(28)
+            row:DockMargin(80, 6, 80, 0)
+            local ic = vgui.Create("DPanel", row)
+            ic:Dock(LEFT)
+            ic:SetWide(28)
+            local mat = Material(iconMat)
+            ic.Paint = function(self, w, h)
+                surface.SetDrawColor(255, 255, 255, 255)
+                surface.SetMaterial(mat)
+                surface.DrawTexturedRect(math.floor((w - 16) / 2), math.floor((h - 16) / 2), 16, 16)
+            end
+            local entry = vgui.Create("DTextEntry", row)
+            entry:Dock(FILL)
+            entry:SetPlaceholderText(placeholder)
+            if initial and initial ~= "" then entry:SetText(initial) end
+            return entry
+        end
+
+        local accEntry = iconRow(box, "icon16/user.png", "Account #", savedAcc)
+        local passEntry = iconRow(box, "icon16/key.png", "Password", "")
+        install_password_mask(passEntry, savedPass)
+
+        local btnRow = vgui.Create("DPanel", box)
+        btnRow:Dock(BOTTOM)
+        btnRow:SetTall(44)
+        btnRow:DockMargin(10, 0, 10, 10)
+        btnRow.Paint = function() end
+        local loginB = vgui.Create("DButton", btnRow)
+        loginB:Dock(RIGHT)
+        loginB:SetWide(100)
+        loginB:SetText("Login")
+        loginB.DoClick = function()
+            send_cmd("bank_internet_login", { ip = inet.ip, acc = accEntry:GetValue(), pass = passEntry:GetRealValue() })
+        end
+        if savedAcc ~= "" then
+            local savedBox = vgui.Create("DPanel", btnRow)
+            savedBox:Dock(LEFT)
+            savedBox:SetWide(220)
+            savedBox.Paint = function() end
+            local accLine = vgui.Create("DLabel", savedBox)
+            accLine:Dock(TOP)
+            accLine:SetTall(18)
+            accLine:SetDark(true)
+            accLine:SetFont("DermaDefaultBold")
+            accLine:SetText("Account #: " .. savedAcc)
+            local passLine = vgui.Create("DLabel", savedBox)
+            passLine:Dock(TOP)
+            passLine:SetTall(18)
+            passLine:SetDark(true)
+            passLine:SetFont("DermaDefaultBold")
+            passLine:SetText("Password: " .. savedPass)
+        end
+        return
+    end
+
+    if mainTab == "Hack account" and inet.is_bank then
+        local wrap = vgui.Create("DPanel", body)
+        wrap:Dock(TOP)
+        wrap:SetTall(180)
+        wrap:DockMargin(0, 40, 0, 0)
+        wrap.Paint = function() end
+
+        local boxWide = 440
+        local box = vgui.Create("DPanel", wrap)
+        box:SetSize(boxWide, 150)
+        wrap.PerformLayout = function(self)
+            box:SetPos(math.floor((self:GetWide() - boxWide) / 2), 0)
+        end
+
+        local prompt = vgui.Create("DLabel", box)
+        prompt:Dock(TOP)
+        prompt:SetTall(28)
+        prompt:DockMargin(10, 14, 10, 4)
+        prompt:SetDark(true)
+        prompt:SetContentAlignment(5)
+        prompt:SetText("Hack bank account")
+
+        local row = vgui.Create("DPanel", box)
+        row:Dock(TOP)
+        row:SetTall(28)
+        row:DockMargin(80, 6, 80, 0)
+        row.Paint = function() end
+        local accLbl = vgui.Create("DLabel", row)
+        accLbl:Dock(LEFT)
+        accLbl:SetWide(80)
+        accLbl:SetDark(true)
+        accLbl:SetContentAlignment(5)
+        accLbl:SetText("Account #")
+        local accEntry = vgui.Create("DTextEntry", row)
+        accEntry:Dock(FILL)
+        accEntry:SetPlaceholderText("Account to hack")
+
+        local btnRow = vgui.Create("DPanel", box)
+        btnRow:Dock(BOTTOM)
+        btnRow:SetTall(44)
+        btnRow:DockMargin(10, 0, 10, 10)
+        btnRow.Paint = function() end
+        local hackB = vgui.Create("DButton", btnRow)
+        hackB:Dock(RIGHT)
+        hackB:SetWide(100)
+        hackB:SetText("Hack")
+        hackB.DoClick = function()
+            send_cmd("bank_internet_hack_acc", { ip = inet.ip, acc = accEntry:GetValue() })
+        end
+        return
+    end
+
+    if mainTab == "Account overview" and inet.is_bank then
+        local sess = MH.OS.State.bank_session
+        if not sess or tonumber(sess.bank_id or 0) ~= tonumber(inet.id or 0) then
+            label(body, "No active account session on this bank."):Dock(TOP)
+            return
+        end
+        local balanceWrap = vgui.Create("DPanel", body)
+        balanceWrap:Dock(TOP)
+        balanceWrap:SetTall(60)
+        balanceWrap:DockMargin(0, 20, 0, 0)
+        balanceWrap.Paint = function() end
+        local balBox = vgui.Create("DPanel", balanceWrap)
+        balBox:SetSize(260, 50)
+        balanceWrap.PerformLayout = function(self)
+            balBox:SetPos(math.floor((self:GetWide() - 260) / 2), 0)
+        end
+        local balLbl = vgui.Create("DLabel", balBox)
+        balLbl:Dock(FILL)
+        balLbl:SetDark(false)
+        balLbl:SetTextColor(Color(60, 160, 70))
+        balLbl:SetFont("DermaLarge")
+        balLbl:SetContentAlignment(5)
+        balLbl:SetTextInset(20, 0)
+        balLbl:SetText("$" .. fmt_cash(sess.cash))
+        local moneyMat = Material("icon16/money.png")
+        local iconSize = 28
+        balLbl.PaintOver = function(self, w, h)
+            surface.SetFont("DermaLarge")
+            local tw = select(1, surface.GetTextSize(self:GetText() or ""))
+            local textX = math.floor((w - tw) / 2) + 10
+            local iconX = textX - iconSize - 64
+            surface.SetDrawColor(255, 255, 255, 255)
+            surface.SetMaterial(moneyMat)
+            surface.DrawTexturedRect(iconX, math.floor((h - iconSize) / 2), iconSize, iconSize)
+        end
+
+        local cols = vgui.Create("DPanel", body)
+        cols:Dock(TOP)
+        cols:SetTall(260)
+        cols:DockMargin(20, 20, 20, 0)
+        cols.Paint = function() end
+
+        local rightCol = vgui.Create("DPanel", cols)
+        rightCol:Dock(RIGHT)
+        rightCol:SetWide(240)
+        rightCol:DockMargin(10, 0, 0, 0)
+        rightCol.Paint = function() end
+        local actionsCard = vgui.Create("DPanel", rightCol)
+        actionsCard:Dock(TOP)
+        actionsCard:SetTall(160)
+        actionsCard:DockPadding(10, 10, 10, 10)
+        local aHdr = vgui.Create("DLabel", actionsCard)
+        aHdr:Dock(TOP)
+        aHdr:SetTall(22)
+        aHdr:SetDark(true)
+        aHdr:SetFont("DermaDefaultBold")
+        aHdr:SetText("Other actions")
+        local actRow = vgui.Create("DPanel", actionsCard)
+        actRow:Dock(TOP)
+        actRow:SetTall(32)
+        actRow:DockMargin(0, 14, 0, 0)
+        actRow.Paint = function() end
+        local chpass = vgui.Create("DButton", actRow)
+        chpass:Dock(LEFT)
+        chpass:SetWide(104)
+        chpass:SetText("Change password")
+        chpass.DoClick = function()
+            Derma_Query("Rotate password on account " .. sess.acc_num .. "?",
+                "Change password", "Change",
+                function() send_cmd("bank_internet_change_pass", {}) end,
+                "Cancel", function() end)
+        end
+        local closeB = vgui.Create("DButton", actRow)
+        closeB:Dock(LEFT)
+        closeB:SetWide(104)
+        closeB:DockMargin(6, 0, 0, 0)
+        closeB:SetText("Close account")
+        closeB.DoClick = function()
+            Derma_Query("Close " .. sess.acc_num .. "?", "Close account",
+                "Close", function() send_cmd("bank_internet_close", {}) end,
+                "Cancel", function() end)
+        end
+        local logoutRow = vgui.Create("DPanel", actionsCard)
+        logoutRow:Dock(TOP)
+        logoutRow:SetTall(32)
+        logoutRow:DockMargin(0, 40, 0, 0)
+        logoutRow.Paint = function() end
+        local logoutB = vgui.Create("DButton", logoutRow)
+        logoutB:Dock(TOP)
+        logoutB:SetTall(28)
+        logoutB:DockMargin(60, 0, 60, 0)
+        logoutB:SetText("Logout")
+        logoutB.DoClick = function() send_cmd("bank_internet_logout", {}) end
+
+        local transferCard = vgui.Create("DPanel", cols)
+        transferCard:Dock(FILL)
+        transferCard:DockPadding(10, 10, 10, 10)
+        local tHdr = vgui.Create("DLabel", transferCard)
+        tHdr:Dock(TOP)
+        tHdr:SetTall(22)
+        tHdr:SetDark(true)
+        tHdr:SetFont("DermaDefaultBold")
+        tHdr:SetText("Transfer money")
+
+        local function tRow(parent, labelText, placeholder, initial, editable)
+            local row = vgui.Create("DPanel", parent)
+            row:Dock(TOP)
+            row:SetTall(28)
+            row:DockMargin(0, 6, 0, 0)
+            row.Paint = function() end
+            local lbl = vgui.Create("DLabel", row)
+            lbl:Dock(LEFT)
+            lbl:SetWide(90)
+            lbl:SetDark(true)
+            lbl:SetContentAlignment(6)
+            lbl:SetText(labelText .. "  ")
+            local entry = vgui.Create("DTextEntry", row)
+            entry:Dock(FILL)
+            entry:SetPlaceholderText(placeholder or "")
+            if initial then entry:SetText(initial) end
+            if editable == false then entry:SetEditable(false) end
+            return entry
+        end
+        local tFrom = tRow(transferCard, "From", "", sess.acc_num, false)
+        local tTo = tRow(transferCard, "To", "Transfer to...", "", true)
+        local tAmt = tRow(transferCard, "Amount", "$0", "", true)
+        tAmt:SetNumeric(true)
+        local tBankIp = tRow(transferCard, "Bank IP", "IP of the receiver account", "", true)
+
+        local sendRow = vgui.Create("DPanel", transferCard)
+        sendRow:Dock(TOP)
+        sendRow:SetTall(36)
+        sendRow:DockMargin(90, 10, 0, 0)
+        sendRow.Paint = function() end
+        local tSend = vgui.Create("DButton", sendRow)
+        tSend:Dock(LEFT)
+        tSend:SetWide(140)
+        tSend:SetText("Transfer Money")
+        tSend.DoClick = function()
+            send_cmd("bank_internet_transfer", { to = tTo:GetValue(), amount = tonumber(tAmt:GetValue()), bank_ip = tBankIp:GetValue() })
+        end
+        return
+    end
+
+    if mainTab == "Index" and not inet.authed then
         if inet.web_image and inet.web_image ~= "" then
             local webBox = vgui.Create("DPanel", body)
             webBox:Dock(TOP)
             webBox:SetTall(300)
-            webBox:DockMargin(0, 10, 0, 0)
+            webBox:DockMargin(0, 10, 0, 10)
             local src = tostring(inet.web_image)
             local bind = surface.LazyURLImage and surface.LazyURLImage(src)
             webBox.Paint = function(self, w, h)
@@ -1519,94 +2866,93 @@ Tabs["Internet"] = function(container)
                 surface.DrawTexturedRect(x, y, size, size)
             end
         end
-
-        local attackerSoft = {}
-        local primary = (MH.OS.State.servers or {})[1]
-        for _, s in ipairs(primary and primary.software or {}) do
-            local t = tonumber(s.soft_type)
-            local v = tonumber(s.soft_version) or 0
-            if (attackerSoft[t] or 0) < v then attackerSoft[t] = v end
-        end
-        local certLvl = tonumber((MH.OS.State.player or {}).cert_level or 0) or 0
-
-        local tiles = vgui.Create("DPanel", body)
-        tiles:Dock(TOP)
-        tiles:SetTall(140)
-        tiles:DockMargin(0, 8, 0, 0)
-
-        local function build_tile(parent, title, headline, ok, disabledReason, onClick)
-            local tile = vgui.Create("DPanel", parent)
-            tile:Dock(LEFT)
-            tile:SetWide(260)
-            tile:DockMargin(0, 0, 10, 0)
-            local t = vgui.Create("DLabel", tile)
-            t:Dock(TOP)
-            t:DockMargin(10, 10, 10, 0)
-            t:SetDark(true)
-            t:SetFont("DermaLarge")
-            t:SetText(title)
-            t:SizeToContents()
-            local h = vgui.Create("DLabel", tile)
-            h:Dock(TOP)
-            h:DockMargin(10, 6, 10, 0)
-            h:SetDark(true)
-            h:SetText(headline)
-            h:SizeToContents()
-            if not ok then
-                local d = vgui.Create("DLabel", tile)
-                d:Dock(TOP)
-                d:DockMargin(10, 2, 10, 0)
-                d:SetDark(true)
-                d:SetText(disabledReason or "Unavailable")
-                d:SizeToContents()
+        if tostring(inet.name) == "Sourcenet" then
+            local watched = MH.OS.State.sourcenet_watched or {}
+            if #watched == 0 then
+                label(body, "No IPs harming internet"):Dock(TOP)
+            else
+                for _, w in ipairs(watched) do
+                    local row = vgui.Create("DPanel", body)
+                    row:Dock(TOP)
+                    row:SetTall(18)
+                    row.Paint = function() end
+                    local ipLbl = vgui.Create("DLabel", row)
+                    ipLbl:Dock(LEFT)
+                    ipLbl:SetWide(160)
+                    ipLbl:SetDark(true)
+                    ipLbl:SetFont("DermaDefaultBold")
+                    ipLbl:SetText(tostring(w.ip or "?"))
+                    local reasonLbl = vgui.Create("DLabel", row)
+                    reasonLbl:Dock(FILL)
+                    reasonLbl:SetDark(true)
+                    reasonLbl:SetText("reason: " .. tostring(w.reason or ""))
+                end
             end
-            local b = vgui.Create("DButton", tile)
-            b:Dock(BOTTOM)
-            b:DockMargin(10, 0, 10, 10)
-            b:SetTall(28)
-            b:SetText(ok and "Launch" or "Unavailable")
-            b:SetEnabled(ok)
-            b.DoClick = onClick
-            return tile
+            return
         end
-
-        local crackerV = attackerSoft[1] or 0
-        local tgtHasher = tonumber(inet.target_hasher or 0) or 0
-        local tgtFirewall = tonumber(inet.target_firewall or 0) or 0
-        local crackOk = crackerV > 0 and crackerV >= tgtHasher
-        local crackReason
-        if crackerV <= 0 then crackReason = "No Cracker."
-        elseif crackerV < tgtHasher then crackReason = "Cracker not high enough level" end
-        build_tile(tiles,
-            "Bruteforce attack",
-            "Cracker version " .. MH.Data.DotVersion(crackerV),
-            crackOk,
-            crackReason,
-            function() send_cmd("crack_ip", { ip = inet.ip, method = "bruteforce" }) end
-        )
-
-        local ftpV = attackerSoft[13] or 0
-        local sshV = attackerSoft[14] or 0
-        local portV = attackerSoft[3] or 0
-        local bestExploit = math.max(ftpV, sshV)
-        local haveExploit = ftpV > 0 or sshV > 0
-        local exploitOk = certLvl >= 3 and portV > 0 and haveExploit and bestExploit >= tgtFirewall
-        local reason
-        if certLvl < 3 then reason = "No certification."
-        elseif portV <= 0 then reason = "No Port Scan."
-        elseif not haveExploit then reason = "No Exploits."
-        elseif bestExploit < tgtFirewall then reason = "Exploit not high enough level" end
-        local method = ftpV >= sshV and ftpV > 0 and "ftp_exploit" or "ssh_exploit"
-        build_tile(tiles,
-            "Exploit attack",
-            "FTP Exploit " .. MH.Data.DotVersion(ftpV) .. "    SSH Exploit " .. MH.Data.DotVersion(sshV),
-            exploitOk,
-            reason,
-            function() send_cmd("crack_ip", { ip = inet.ip, method = method }) end
-        )
-
-        render_target_processes(body, "Active attacks on this target")
-
+        if tostring(inet.name) == "FBI" then
+            label(body, "FBI Wanted List", "DermaDefaultBold"):Dock(TOP)
+            local spacer = vgui.Create("DPanel", body)
+            spacer:Dock(TOP) spacer:SetTall(8) spacer.Paint = function() end
+            local wanted = MH.OS.State.fbi_wanted or {}
+            if #wanted == 0 then
+                label(body, "No wanted IPs atm"):Dock(TOP)
+            else
+                for _, w in ipairs(wanted) do
+                    local row = vgui.Create("DPanel", body)
+                    row:Dock(TOP)
+                    row:SetTall(18)
+                    row.Paint = function() end
+                    local ipLbl = vgui.Create("DLabel", row)
+                    ipLbl:Dock(LEFT)
+                    ipLbl:SetWide(140)
+                    ipLbl:SetDark(true)
+                    ipLbl:SetFont("DermaDefaultBold")
+                    ipLbl:SetText(tostring(w.ip or "?"))
+                    local bountyLbl = vgui.Create("DLabel", row)
+                    bountyLbl:Dock(LEFT)
+                    bountyLbl:SetWide(120)
+                    bountyLbl:SetDark(false)
+                    bountyLbl:SetTextColor(Color(60, 160, 70))
+                    bountyLbl:SetFont("DermaDefaultBold")
+                    bountyLbl:SetText("$" .. fmt_cash(w.bounty))
+                    local reasonLbl = vgui.Create("DLabel", row)
+                    reasonLbl:Dock(FILL)
+                    reasonLbl:SetDark(true)
+                    reasonLbl:SetText(tostring(w.reason or ""))
+                end
+            end
+            return
+        end
+        if tostring(inet.name) == "Download Center" then
+            label(body, "Welcome to the download center!"):Dock(TOP)
+            local spacer = vgui.Create("DPanel", body)
+            spacer:Dock(TOP) spacer:SetTall(8) spacer.Paint = function() end
+            label(body, "Download whatever you need. Unlimited bandwidth!"):Dock(TOP)
+            local spacer2 = vgui.Create("DPanel", body)
+            spacer2:Dock(TOP) spacer2:SetTall(10) spacer2.Paint = function() end
+            local function labeled_line(bold, rest)
+                local row = vgui.Create("DPanel", body)
+                row:Dock(TOP)
+                row:SetTall(18)
+                row.Paint = function() end
+                local b = vgui.Create("DLabel", row)
+                b:Dock(LEFT)
+                b:SetDark(true)
+                b:SetFont("DermaDefaultBold")
+                b:SetText(bold)
+                b:SizeToContents()
+                local v = vgui.Create("DLabel", row)
+                v:Dock(LEFT)
+                v:DockMargin(4, 0, 0, 0)
+                v:SetDark(true)
+                v:SetText(rest)
+                v:SizeToContents()
+            end
+            labeled_line("Username:", "download")
+            labeled_line("Password:", "download")
+            return
+        end
         if inet.is_isp then
             label(body, "Internet Service Provider", "DermaLarge"):Dock(TOP)
             label(body, "Reset your home IP or your root password.", "DermaDefault"):Dock(TOP)
@@ -1620,7 +2966,7 @@ Tabs["Internet"] = function(container)
                 ipB:SetText("IP reset cooldown: " .. math.ceil(tonumber(inet.ip_reset_wait or 0)) .. "s")
                 ipB:SetEnabled(false)
             else
-                ipB:SetText("Reset My IP - " .. (ipPrice == 0 and "Free" or ("$" .. ipPrice)))
+                ipB:SetText("Reset My IP - " .. (ipPrice == 0 and "Free" or ("$" .. fmt_cash(ipPrice))))
                 ipB.DoClick = function()
                     Derma_Query("Reset your home IP?" .. (ipPrice > 0 and ("\nCost: $" .. ipPrice) or ""),
                         "Reset IP", "Reset",
@@ -1638,7 +2984,7 @@ Tabs["Internet"] = function(container)
                 pwdB:SetText("Password reset cooldown: " .. math.ceil(tonumber(inet.pwd_reset_wait or 0)) .. "s")
                 pwdB:SetEnabled(false)
             else
-                pwdB:SetText("Reset Root Password - " .. (pPrice == 0 and "Free" or ("$" .. pPrice)))
+                pwdB:SetText("Reset Root Password - " .. (pPrice == 0 and "Free" or ("$" .. fmt_cash(pPrice))))
                 pwdB.DoClick = function()
                     Derma_Query("Rotate your root password?\nAll existing hacked-list entries pointing at your server will be invalidated.",
                         "Reset password", "Reset",
@@ -1675,98 +3021,52 @@ Tabs["Internet"] = function(container)
         end
 
         if inet.is_bank then
-            local bankRow = vgui.Create("DPanel", body)
-            bankRow:Dock(TOP)
-            bankRow:SetTall(32)
-            bankRow:DockMargin(0, 6, 0, 0)
-            local accEntry = vgui.Create("DTextEntry", bankRow)
-            accEntry:Dock(LEFT) accEntry:SetWide(140) accEntry:SetPlaceholderText("account #")
-            local bPassEntry = vgui.Create("DTextEntry", bankRow)
-            bPassEntry:Dock(LEFT) bPassEntry:SetWide(140) bPassEntry:SetPlaceholderText("password") bPassEntry:DockMargin(4, 0, 0, 0)
-            local blogin = vgui.Create("DButton", bankRow)
-            blogin:SetText("Account login") blogin:Dock(LEFT) blogin:SetWide(130) blogin:DockMargin(4, 0, 0, 0)
-            blogin.DoClick = function()
-                send_cmd("bank_internet_login", { ip = inet.ip, acc = accEntry:GetValue(), pass = bPassEntry:GetValue() })
-            end
-            local register = vgui.Create("DButton", bankRow)
-            register:SetText("Register account") register:Dock(LEFT) register:SetWide(150) register:DockMargin(4, 0, 0, 0)
-            register.DoClick = function() send_cmd("bank_internet_register", { ip = inet.ip }) end
+            local bankName = tostring(inet.name or "bank")
+            local welcomeRow = vgui.Create("DPanel", body)
+            welcomeRow:Dock(TOP)
+            welcomeRow:SetTall(18)
+            welcomeRow.Paint = function() end
+            local prefix = vgui.Create("DLabel", welcomeRow)
+            prefix:Dock(LEFT)
+            prefix:SetDark(true)
+            prefix:SetText("Welcome to the ")
+            prefix:SizeToContents()
+            local bankLbl = vgui.Create("DLabel", welcomeRow)
+            bankLbl:Dock(LEFT)
+            bankLbl:SetDark(true)
+            bankLbl:SetFont("DermaDefaultBold")
+            bankLbl:SetText(bankName)
+            bankLbl:SizeToContents()
+            local suffix = vgui.Create("DLabel", welcomeRow)
+            suffix:Dock(LEFT)
+            suffix:SetDark(true)
+            suffix:SetText(".")
+            suffix:SizeToContents()
 
-            if inet.authed and tostring(inet.auth_user or "root") == "root" then
-                label(body, "Or crack a specific bank account by number:", "DermaDefaultBold"):Dock(TOP)
-                local hackRow = vgui.Create("DPanel", body)
-                hackRow:Dock(TOP)
-                hackRow:SetTall(32)
-                hackRow:DockMargin(0, 6, 0, 0)
-                local hAcc = vgui.Create("DTextEntry", hackRow)
-                hAcc:Dock(LEFT) hAcc:SetWide(200) hAcc:SetPlaceholderText("account # to crack")
-                local hBtn = vgui.Create("DButton", hackRow)
-                hBtn:SetText("Hack account")
-                hBtn:Dock(LEFT) hBtn:SetWide(140) hBtn:DockMargin(4, 0, 0, 0)
-                hBtn.DoClick = function()
-                    send_cmd("bank_internet_hack_acc", { ip = inet.ip, acc = hAcc:GetValue() })
-                end
+            local spacer = vgui.Create("DPanel", body)
+            spacer:Dock(TOP) spacer:SetTall(10) spacer.Paint = function() end
+
+            label(body, "We have a very modest defense, but at least you didn't have to pay for an account."):Dock(TOP)
+
+            local spacer2 = vgui.Create("DPanel", body)
+            spacer2:Dock(TOP) spacer2:SetTall(10) spacer2.Paint = function() end
+
+            local loginLink = vgui.Create("DButton", body)
+            loginLink:Dock(TOP)
+            loginLink:SetTall(20)
+            loginLink:SetText("Login to your account.")
+            loginLink:SetContentAlignment(4)
+            loginLink:SetTextInset(0, 0)
+            loginLink.Paint = function() end
+            loginLink.PaintOver = function() end
+            loginLink:SetTextColor(Color(60, 100, 190))
+            loginLink:SizeToContents()
+            loginLink.DoClick = function()
+                MH.OS.InternetMainTab = "Account login"
+                if MH.OS.Rebuild then MH.OS.Rebuild() end
             end
         end
 
-        local sess = MH.OS.State.bank_session
-        if sess and tonumber(sess.bank_id) == tonumber(inet.id) then
-            local balanceBox = vgui.Create("DPanel", body)
-            balanceBox:Dock(TOP)
-            balanceBox:SetTall(70)
-            balanceBox:DockMargin(0, 8, 0, 6)
-            local balLbl = vgui.Create("DLabel", balanceBox)
-            balLbl:Dock(FILL)
-            balLbl:SetDark(true)
-            balLbl:SetFont("DermaLarge")
-            balLbl:SetContentAlignment(5)
-            balLbl:SetText("$" .. tostring(sess.cash))
-            local meta = vgui.Create("DLabel", balanceBox)
-            meta:Dock(BOTTOM)
-            meta:SetDark(true)
-            meta:SetContentAlignment(5)
-            meta:SetTall(16)
-            meta:SetText("Account " .. sess.acc_num .. "   on bank " .. tostring(sess.bank_name or "?") .. "   " .. tostring(sess.bank_ip or ""))
-
-            label(body, "Transfer money", "DermaDefaultBold"):Dock(TOP)
-            local tRow = vgui.Create("DPanel", body)
-            tRow:Dock(TOP) tRow:SetTall(32) tRow:DockMargin(0, 6, 0, 0)
-            local tFrom = vgui.Create("DTextEntry", tRow)
-            tFrom:Dock(LEFT) tFrom:SetWide(140) tFrom:SetText(sess.acc_num) tFrom:SetEditable(false)
-            local tTo = vgui.Create("DTextEntry", tRow)
-            tTo:Dock(LEFT) tTo:SetWide(140) tTo:SetPlaceholderText("to account #") tTo:DockMargin(4, 0, 0, 0)
-            local tBankIp = vgui.Create("DTextEntry", tRow)
-            tBankIp:Dock(LEFT) tBankIp:SetWide(130) tBankIp:SetPlaceholderText("recipient bank IP") tBankIp:DockMargin(4, 0, 0, 0)
-            local tAmt = vgui.Create("DTextEntry", tRow)
-            tAmt:Dock(LEFT) tAmt:SetWide(100) tAmt:SetPlaceholderText("amount") tAmt:DockMargin(4, 0, 0, 0) tAmt:SetNumeric(true)
-            local tSend = vgui.Create("DButton", tRow)
-            tSend:SetText("Transfer")
-            tSend:Dock(LEFT) tSend:SetWide(100) tSend:DockMargin(4, 0, 0, 0)
-            tSend.DoClick = function()
-                send_cmd("bank_internet_transfer", { to = tTo:GetValue(), amount = tonumber(tAmt:GetValue()), bank_ip = tBankIp:GetValue() })
-            end
-
-            local actionRow = vgui.Create("DPanel", body)
-            actionRow:Dock(TOP) actionRow:SetTall(32) actionRow:DockMargin(0, 8, 0, 0)
-            local chpass = vgui.Create("DButton", actionRow)
-            chpass:SetText("Change password") chpass:Dock(LEFT) chpass:SetWide(160)
-            chpass.DoClick = function()
-                Derma_Query("Rotate password on account " .. sess.acc_num .. "?",
-                    "Change password", "Change",
-                    function() send_cmd("bank_internet_change_pass", {}) end,
-                    "Cancel", function() end)
-            end
-            local closeB = vgui.Create("DButton", actionRow)
-            closeB:SetText("Close account") closeB:Dock(LEFT) closeB:SetWide(140) closeB:DockMargin(4, 0, 0, 0)
-            closeB.DoClick = function()
-                Derma_Query("Close " .. sess.acc_num .. "?", "Close account",
-                    "Close", function() send_cmd("bank_internet_close", {}) end,
-                    "Cancel", function() end)
-            end
-            local logoutB = vgui.Create("DButton", actionRow)
-            logoutB:SetText("Logout account") logoutB:Dock(LEFT) logoutB:SetWide(140) logoutB:DockMargin(4, 0, 0, 0)
-            logoutB.DoClick = function() send_cmd("bank_internet_logout", {}) end
-        end
         return
     end
 
@@ -1853,104 +3153,202 @@ Tabs["Internet"] = function(container)
                 })
             end
         elseif MH.OS.InternetView == "Logs" then
-            local toolbar = vgui.Create("DPanel", sub)
-            toolbar:Dock(TOP)
-            toolbar:SetTall(30)
-            toolbar:DockMargin(0, 0, 0, 4)
-            local editBtn = vgui.Create("DButton", toolbar)
-            editBtn:SetText("Edit")
-            editBtn:Dock(LEFT)
-            editBtn:SetWide(80)
-            local saveBtn = vgui.Create("DButton", toolbar)
-            saveBtn:SetText("Save edits")
-            saveBtn:Dock(LEFT)
-            saveBtn:DockMargin(4, 0, 0, 0)
-            saveBtn:SetWide(100)
-            saveBtn:SetVisible(false)
-            local cancelBtn = vgui.Create("DButton", toolbar)
-            cancelBtn:SetText("Cancel")
-            cancelBtn:Dock(LEFT)
-            cancelBtn:DockMargin(4, 0, 0, 0)
-            cancelBtn:SetWide(80)
-            cancelBtn:SetVisible(false)
-            local delBtn = vgui.Create("DButton", toolbar)
-            delBtn:SetText("Delete all")
-            delBtn:Dock(RIGHT)
-            delBtn:SetWide(100)
-            if inet.log_disabled then
-                editBtn:SetEnabled(false)
-                delBtn:SetEnabled(false)
-                editBtn:SetTooltip("This server does not keep logs.")
-                delBtn:SetTooltip("This server does not keep logs.")
+            local pad = vgui.Create("DPanel", sub)
+            pad:Dock(TOP)
+            pad:SetTall(560)
+            pad:DockMargin(0, 6, 10, 0)
+            pad:DockPadding(80, 20, 80, 20)
+
+            if inet.log_locked then
+                local status = vgui.Create("DLabel", pad)
+                status:Dock(TOP)
+                status:SetTall(18)
+                status:SetDark(true)
+                status:SetContentAlignment(5)
+                status:SetText("A log process is already running on target.")
             end
-            local status = vgui.Create("DLabel", sub)
-            status:Dock(TOP)
-            status:SetDark(true)
-            status:SetText(inet.log_locked and "A log process is already running on target." or "")
-            local text = vgui.Create("DTextEntry", sub)
+            local text = vgui.Create("DTextEntry", pad)
             text:Dock(TOP)
-            text:SetTall(560)
-            text:DockMargin(0, 4, 0, 4)
+            text:SetTall(420)
+            text:DockMargin(0, 10, 0, 0)
             text:SetMultiline(true)
-            text:SetEditable(false)
+            text:SetEditable(not inet.log_disabled)
             text:SetVerticalScrollbarEnabled(true)
             text:SetValue(tostring(inet.log_text or ""))
+            local btnRow = vgui.Create("DPanel", pad)
+            btnRow:Dock(TOP)
+            btnRow:SetTall(36)
+            btnRow:DockMargin(0, 16, 0, 0)
+            btnRow.Paint = function() end
+            local editBtn = vgui.Create("DButton", btnRow)
+            editBtn:SetSize(130, 32)
+            editBtn:SetText("Edit log file")
             editBtn.DoClick = function()
-                text:SetEditable(true)
-                editBtn:SetVisible(false)
-                saveBtn:SetVisible(true)
-                cancelBtn:SetVisible(true)
-            end
-            cancelBtn.DoClick = function()
-                text:SetEditable(false)
-                text:SetValue(tostring(inet.log_text or ""))
-                editBtn:SetVisible(true)
-                saveBtn:SetVisible(false)
-                cancelBtn:SetVisible(false)
-            end
-            saveBtn.DoClick = function()
                 send_cmd("internet_log_edit_submit", { content = text:GetValue() })
-                text:SetEditable(false)
-                editBtn:SetVisible(true)
-                saveBtn:SetVisible(false)
-                cancelBtn:SetVisible(false)
             end
+            local delBtn = vgui.Create("DButton", btnRow)
+            delBtn:SetSize(130, 32)
+            delBtn:SetText("Delete all")
             delBtn.DoClick = function()
                 Derma_Query("Wipe remote log on " .. tostring(inet.ip) .. "?",
                     "Delete remote log", "Delete",
                     function() send_cmd("internet_log_delete_all", {}) end,
                     "Cancel", function() end)
             end
+            if inet.log_disabled then
+                editBtn:SetEnabled(false)
+                delBtn:SetEnabled(false)
+                editBtn:SetTooltip("This server does not keep logs.")
+                delBtn:SetTooltip("This server does not keep logs.")
+            end
+            local gap = 10
+            btnRow.PerformLayout = function(self)
+                local totalW = 130 + gap + 130
+                local x = math.floor((self:GetWide() - totalW) / 2)
+                editBtn:SetPos(x, 0)
+                delBtn:SetPos(x + 130 + gap, 0)
+            end
         elseif MH.OS.InternetView == "Softwares" then
-            local primaryNet = (MH.OS.State.servers or {})[1]
-            local myNetTier = tonumber(primaryNet and primaryNet.net_tier or 1) or 1
-            local myNet = (MH.Data.Hardware.net[myNetTier] or MH.Data.Hardware.net[1]).mbps or 1
+            local targetNetTier = tonumber(inet and inet.net_tier or 1) or 1
+            local targetNet = (MH.Data.Hardware.net[targetNetTier] or MH.Data.Hardware.net[1]).mbps or 1
+            local dlKBs = targetNet * 125
+            local ulKBs = targetNet * 62.5
+            local function fmt_rate(kBs)
+                local n, unit
+                if kBs >= 1000 then
+                    n = kBs / 1000
+                    unit = "MB/s"
+                else
+                    n = kBs
+                    unit = "kB/s"
+                end
+                local s = string.format("%.2f", n)
+                s = s:gsub("0+$", "")
+                s = s:gsub("%.$", "")
+                return s .. unit
+            end
+
+            local uploadB = vgui.Create("DButton", rightCol)
+            uploadB:Dock(TOP)
+            uploadB:SetTall(32)
+            uploadB:DockMargin(0, 4, 0, 0)
+            uploadB:SetText("Upload...")
+            uploadB.DoClick = function()
+                local primary = (MH.OS.State.servers or {})[1]
+                local uploadables = {}
+                for _, inv in ipairs(primary and primary.software or {}) do
+                    if tonumber(inv.hidden or 0) == 0 then table.insert(uploadables, inv) end
+                end
+                if #uploadables == 0 then return end
+                local m = DermaMenu()
+                for _, inv in ipairs(uploadables) do
+                    local meta = MH.Data.Soft[tonumber(inv.soft_type or 0)] or {}
+                    local label = (inv.soft_name or "?") .. (meta.ext or "") ..
+                        "  v" .. MH.Data.DotVersion(inv.soft_version)
+                    m:AddOption(label, function()
+                        send_cmd("remote_soft_upload", { soft_id = inv.id })
+                    end)
+                end
+                m:Open()
+            end
+
+            local netLbl = vgui.Create("DLabel", rightCol)
+            netLbl:Dock(TOP)
+            netLbl:SetTall(18)
+            netLbl:DockMargin(0, 4, 0, 4)
+            netLbl:SetDark(true)
+            netLbl:SetContentAlignment(5)
+            netLbl:SetText(string.format("%d Mbit ( %s - %s)",
+                targetNet, fmt_rate(dlKBs), fmt_rate(ulKBs)))
 
             local hUsed, hTotal = hdd_usage_for(inet)
-            local rUsed, rTotal = ram_usage_for(inet)
-            local hdd = usage_pie(rightCol, 110, "HDD", hUsed, hTotal)
-            hdd:Dock(TOP) hdd:DockMargin(0, 4, 0, 8)
-            local ram = usage_pie(rightCol, 110, "RAM", rUsed, rTotal)
-            ram:Dock(TOP) ram:DockMargin(0, 0, 0, 8)
+            local hdd = usage_pie(rightCol, 140, "HDD", hUsed, hTotal)
+            hdd:Dock(TOP)
+            hdd:DockMargin(0, 4, 0, 8)
 
-            label(sub, "Files on remote target  (your NET: " .. myNet .. " Mbps)", "DermaDefaultBold"):Dock(TOP)
+            local fileBtnRow = vgui.Create("DPanel", rightCol)
+            fileBtnRow:Dock(TOP)
+            fileBtnRow:SetTall(32)
+            fileBtnRow:DockMargin(0, 4, 0, 0)
+            fileBtnRow.Paint = function() end
+            local newTxtB = vgui.Create("DButton", fileBtnRow)
+            newTxtB:Dock(LEFT)
+            newTxtB:SetWide(84)
+            newTxtB:SetText("New text file")
+            newTxtB.DoClick = function()
+                MH.OS.OpenNewTextPopup(tostring(inet.ip), function(name, content)
+                    send_cmd("remote_soft_text_create", { name = name, content = content })
+                end)
+            end
+            local folderB = vgui.Create("DButton", fileBtnRow)
+            folderB:Dock(RIGHT)
+            folderB:SetWide(84)
+            folderB:SetText("Create folder")
+            folderB:SetEnabled(false)
+            folderB:SetTooltip("Folder creation is disabled")
+
+            local resetSoft = vgui.Create("DLabel", rightCol)
+            resetSoft:Dock(TOP)
+            resetSoft:SetTall(16)
+            resetSoft:DockMargin(0, 14, 0, 0)
+            resetSoft:SetDark(true)
+            resetSoft:SetContentAlignment(5)
+            local nowT = tonumber(MH.OS.State.server_now) or os.time()
+            local nextSoftReset = tonumber(inet.next_software_reset or 0) or 0
+            local soFar = math.max(0, nextSoftReset - nowT)
+            if nextSoftReset > 0 then
+                local mins = math.floor(soFar / 60)
+                resetSoft:SetText("Next software reset: " .. mins .. " minutes")
+            else
+                resetSoft:SetText("Next software reset: ~15 minutes")
+            end
+            local resetHw = vgui.Create("DLabel", rightCol)
+            resetHw:Dock(TOP)
+            resetHw:SetTall(16)
+            resetHw:DockMargin(0, 2, 0, 0)
+            resetHw:SetDark(true)
+            resetHw:SetContentAlignment(5)
+            local nextHwReset = tonumber(inet.next_hardware_reset or 0) or 0
+            if nextHwReset > 0 then
+                local hrs = math.max(0, nextHwReset - nowT) / 3600
+                resetHw:SetText(string.format("Next hardware reset: %.1f hours", hrs))
+            else
+                resetHw:SetText("Next hardware reset: ~1 hour")
+            end
+
+            local filesLbl = label(sub, "Files on remote target", "DermaDefaultBold")
+            filesLbl:Dock(TOP)
+            filesLbl:DockMargin(5.5, 0, 0, 0)
+            local COL_LINES_X = { 240, 350, 410, 500 }
             local header = vgui.Create("DPanel", sub)
             header:Dock(TOP)
             header:SetTall(20)
             header:DockMargin(0, 4, 0, 0)
-            local function hcol(txt, wide, dock)
+            header.PaintOver = function(self, w, h)
+                surface.SetDrawColor(80, 80, 80, 180)
+                for _, x in ipairs(COL_LINES_X) do
+                    surface.DrawLine(x, 0, x, h)
+                end
+            end
+            local function hcol(txt, wide, dock, marginL)
                 local l = vgui.Create("DLabel", header)
                 l:Dock(dock or LEFT)
                 if wide then l:SetWide(wide) end
+                if marginL then l:DockMargin(marginL, 0, 0, 0) end
                 l:SetDark(true)
                 l:SetFont("DermaDefaultBold")
                 l:SetText("  " .. txt)
             end
             hcol("File",     180)
-            hcol("Type",     110)
+            hcol("Type",     110, nil, 60)
             hcol("Version",  60)
-            hcol("Size",     60)
-            hcol("Actions", nil, FILL)
+            hcol("Size",     60, nil, 30)
+            local actionsL = vgui.Create("DLabel", header)
+            actionsL:Dock(FILL)
+            actionsL:SetDark(true)
+            actionsL:SetFont("DermaDefaultBold")
+            actionsL:SetText("  Actions")
+            actionsL:SetTextInset(435, 0)
 
             local missionTargetSoft, missionTargetKind = nil, nil
             for _, m in ipairs(MH.OS.State.missions or {}) do
@@ -1974,12 +3372,20 @@ Tabs["Internet"] = function(container)
                 row:Dock(TOP)
                 row:SetTall(28)
                 row:DockMargin(0, 2, 0, 0)
+                row.PaintOver = function(self, w, h)
+                    surface.SetDrawColor(80, 80, 80, 180)
+                    for _, x in ipairs(COL_LINES_X) do
+                        surface.DrawLine(x, 0, x, h)
+                    end
+                end
                 local highlight = missionTargetSoft and tostring(s.soft_name or "") == missionTargetSoft
                     and HIGHLIGHT_COLOR[missionTargetKind] or nil
-                local function rcol(txt, wide, dock)
+                local function rcol(txt, wide, dock, marginL, font)
                     local l = vgui.Create("DLabel", row)
                     l:Dock(dock or LEFT)
                     if wide then l:SetWide(wide) end
+                    if marginL then l:DockMargin(marginL, 0, 0, 0) end
+                    if font then l:SetFont(font) end
                     if highlight then
                         l:SetDark(false)
                         l:SetTextColor(highlight)
@@ -1988,13 +3394,15 @@ Tabs["Internet"] = function(container)
                     end
                     l:SetText("  " .. tostring(txt or ""))
                 end
-                rcol((s.soft_name or "?") .. (meta.ext or ""), 180)
-                rcol(meta.name or ("#" .. tostring(s.soft_type)), 110)
+                local nameFont = tonumber(s.installed) == 1 and "DermaDefaultBold" or nil
+                rcol((s.soft_name or "?") .. (meta.ext or ""), 180, nil, nil, nameFont)
+                rcol(meta.name or ("#" .. tostring(s.soft_type)), 110, nil, 60)
                 rcol("v" .. MH.Data.DotVersion(s.soft_version), 60)
-                rcol(tostring(s.soft_size or 0) .. " MB", 60)
+                rcol(tostring(s.soft_size or 0) .. " MB", 60, nil, 30)
                 local actions = vgui.Create("DPanel", row)
                 actions:Dock(RIGHT)
-                actions:SetWide(430)
+                actions:SetWide(340)
+                actions:DockPadding(90, 0, 0, 0)
                 local primary = (MH.OS.State.servers or {})[1]
                 local myTools = { [5] = 0, [6] = 0, [7] = 0 }
                 for _, inv in ipairs(primary and primary.software or {}) do
@@ -2003,14 +3411,23 @@ Tabs["Internet"] = function(container)
                         myTools[st] = math.max(myTools[st], tonumber(inv.soft_version) or 0)
                     end
                 end
-                local function remote_btn(text, action, needTool, needName)
+                local function remote_btn(text, action, needTool, needName, iconPath)
                     local b = vgui.Create("DButton", actions)
-                    b:SetText(text)
+                    b:SetText("")
                     b:Dock(LEFT)
-                    b:SetWide(70)
+                    b:SetWide(28)
                     b:DockMargin(0, 2, 2, 2)
+                    b:SetTooltip(text)
                     b.DoClick = function()
                         send_cmd("remote_soft_action", { soft_id = s.id, action = action })
+                    end
+                    if iconPath then
+                        local mat = Material(iconPath)
+                        b.PaintOver = function(self, w, h)
+                            surface.SetDrawColor(255, 255, 255, 255)
+                            surface.SetMaterial(mat)
+                            surface.DrawTexturedRect(math.floor((w - 16) / 2), math.floor((h - 16) / 2), 16, 16)
+                        end
                     end
                     if needTool and myTools[needTool] <= 0 then
                         b:SetEnabled(false)
@@ -2018,7 +3435,10 @@ Tabs["Internet"] = function(container)
                     end
                     return b
                 end
-                local isRiddle = tonumber(s.soft_type) == 26
+                local st = tonumber(s.soft_type)
+                local isRiddle = st == 26
+                local isFolder = st == 31
+                local isText = st == 30
                 if isRiddle and inet.is_puzzle then
                     local solveB = vgui.Create("DButton", actions)
                     solveB:Dock(LEFT)
@@ -2036,28 +3456,46 @@ Tabs["Internet"] = function(container)
                             MH.OS.OpenRiddlePopup(inet)
                         end
                     end
+                elseif isFolder then
+                    local isRoot = tostring(inet.auth_user or "root") == "root"
+                    if isRoot then
+                        remote_btn("Delete", "delete", nil, nil, "icon16/delete.png")
+                    end
                 else
                     local dl = vgui.Create("DButton", actions)
-                    dl:SetText("Download")
+                    dl:SetText("")
                     dl:Dock(LEFT)
-                    dl:SetWide(80)
+                    dl:SetWide(28)
                     dl:DockMargin(0, 2, 2, 2)
+                    dl:SetTooltip("Download")
+                    local dlMat = Material("icon16/arrow_down.png")
+                    dl.PaintOver = function(self, w, h)
+                        surface.SetDrawColor(255, 255, 255, 255)
+                        surface.SetMaterial(dlMat)
+                        surface.DrawTexturedRect(math.floor((w - 16) / 2), math.floor((h - 16) / 2), 16, 16)
+                    end
                     dl.DoClick = function()
                         send_cmd("remote_soft_download", { soft_id = s.id })
                     end
                     local isRoot = tostring(inet.auth_user or "root") == "root"
-                    if isRoot then
-                        remote_btn(tonumber(s.installed) == 1 and "Stop" or "Run",
-                            tonumber(s.installed) == 1 and "uninstall" or "install")
+                    if isRoot and not isText then
+                        local running = tonumber(s.installed) == 1
+                        remote_btn(running and "Stop" or "Run",
+                            running and "uninstall" or "install",
+                            nil, nil,
+                            running and "icon16/stop.png" or "icon16/control_play.png")
                         local isHidden = tonumber(s.hidden) == 1
                         remote_btn(isHidden and "Seek" or "Hide",
                             isHidden and "seek" or "hide",
                             isHidden and 6 or 5,
-                            isHidden and "Seeker" or "Hider")
-                        remote_btn("Delete", "delete")
+                            isHidden and "Seeker" or "Hider",
+                            isHidden and "icon16/magnifier.png" or "icon16/wand.png")
+                    end
+                    if isRoot then
+                        remote_btn("Delete", "delete", nil, nil, "icon16/delete.png")
                     end
                 end
-                if tonumber(s.soft_type) == 30 then
+                if isText then
                     local edit = vgui.Create("DButton", actions)
                     edit:SetText("Read")
                     edit:Dock(LEFT)
@@ -2091,53 +3529,44 @@ Tabs["Internet"] = function(container)
                 end
             end
 
-            if tostring(inet.auth_user or "root") == "root" then
-                label(sub, "Upload a local file to this target:", "DermaDefaultBold"):Dock(TOP)
-                local primary = (MH.OS.State.servers or {})[1]
-                local uploadables = {}
-                for _, inv in ipairs(primary and primary.software or {}) do
-                    if tonumber(inv.hidden or 0) == 0 then table.insert(uploadables, inv) end
-                end
-                local uploadCombo = vgui.Create("DComboBox", sub)
-                uploadCombo:Dock(TOP)
-                uploadCombo:DockMargin(0, 4, 0, 0)
-                uploadCombo:SetValue("Pick a local file to upload...")
-                for i, inv in ipairs(uploadables) do
-                    local meta = MH.Data.Soft[tonumber(inv.soft_type or 0)] or {}
-                    uploadCombo:AddChoice((inv.soft_name or "?") .. (meta.ext or "") ..
-                        "  v" .. MH.Data.DotVersion(inv.soft_version), i)
-                end
-                local uploadB = vgui.Create("DButton", sub)
-                uploadB:SetText("Upload selected")
-                uploadB:Dock(TOP)
-                uploadB:DockMargin(0, 4, 0, 0)
-                uploadB:SetTall(28)
-                uploadB.DoClick = function()
-                    local _, idx = uploadCombo:GetSelected()
-                    local pick = idx and uploadables[tonumber(idx)]
-                    if not pick then return end
-                    send_cmd("remote_soft_upload", { soft_id = pick.id })
-                end
-            end
         end
     end
-
-    local logoutB = button(subbar, "Logout", function()
-        send_cmd("internet_logout", {})
-    end)
-    logoutB:Dock(RIGHT)
-    logoutB:SetWide(100)
 
     local tabs = { "Logs", "Softwares" }
     local showBanking = inet.is_bank and inet.authed and tostring(inet.auth_user or "root") == "root"
     if showBanking then tabs[#tabs + 1] = "Banking" end
+    tabs[#tabs + 1] = "Logout"
+    local AUTHED_TAB_ICONS = {
+        ["Logs"]      = "icon16/book.png",
+        ["Softwares"] = "icon16/folder.png",
+        ["Logout"]    = "icon16/door_open.png",
+    }
     for _, name in ipairs(tabs) do
         local b = vgui.Create("DButton", subbar)
         b:SetText(name)
         b:Dock(LEFT)
         b:SetWide(120)
         b:DockMargin(0, 0, 4, 0)
-        b.DoClick = function() MH.OS.InternetView = name paintRemote() end
+        if name == "Logout" then
+            b.DoClick = function() send_cmd("internet_logout", {}) end
+        else
+            b.DoClick = function() MH.OS.InternetView = name paintRemote() end
+        end
+        if AUTHED_TAB_ICONS[name] then
+            local iconMat = Material(AUTHED_TAB_ICONS[name])
+            surface.SetFont("DermaDefault")
+            local textW = select(1, surface.GetTextSize(name))
+            local iconW, gap = 16, 8
+            b:SetContentAlignment(6)
+            b:SetTextInset(math.floor((120 - (iconW + gap + textW)) / 2), 0)
+            b.PaintOver = function(self, w, h)
+                local x = math.floor((w - (iconW + gap + textW)) / 2)
+                local y = math.floor((h - iconW) / 2)
+                surface.SetDrawColor(255, 255, 255, 255)
+                surface.SetMaterial(iconMat)
+                surface.DrawTexturedRect(x, y, iconW, iconW)
+            end
+        end
     end
     local validView = { Logs = true, Softwares = true, Banking = showBanking }
     if not validView[MH.OS.InternetView] then
@@ -2250,15 +3679,20 @@ end
 Tabs["Task Manager"] = function(container)
     clear(container)
     local srv = current_server()
-    label(container, "Task Manager", "DermaLarge"):Dock(TOP)
+    tab_header(container, "Task Manager", current_server())
 
-    local body = IsValid(container) and container:GetParent() or nil
-    local tmSidebar = IsValid(body) and vgui.Create("DPanel", body) or nil
+    local tmWrap = vgui.Create("DPanel", container)
+    tmWrap:Dock(TOP)
+    tmWrap:SetTall(620)
+    tmWrap:DockMargin(0, 6, 0, 0)
+    tmWrap.Paint = function() end
+
+    local tmSidebar = vgui.Create("DPanel", tmWrap)
     if IsValid(tmSidebar) then
         MH.OS._FloatSidebar = tmSidebar
         tmSidebar:Dock(RIGHT)
         tmSidebar:SetWide(210)
-        tmSidebar:DockMargin(6, 6, 6, 6)
+        tmSidebar:DockMargin(6, 2, 0, 0)
         local function side_btn(txt, cb)
             local b = vgui.Create("DButton", tmSidebar)
             b:SetText(txt)
@@ -2289,6 +3723,10 @@ Tabs["Task Manager"] = function(container)
             end)
         end
     end
+
+    local tmContent = vgui.Create("DScrollPanel", tmWrap)
+    tmContent:Dock(FILL)
+    container = tmContent
 
     if MH.OS.WatchProcess then
         local watch = MH.OS.WatchProcess
@@ -2335,6 +3773,12 @@ Tabs["Task Manager"] = function(container)
     subbar:Dock(TOP)
     subbar:SetTall(28)
     subbar:DockMargin(0, 2, 0, 6)
+    local TM_ICONS = {
+        ["All"]     = "icon16/chart_curve.png",
+        ["CPU"]     = "icon16/computer.png",
+        ["Network"] = "icon16/drive_network.png",
+        ["Running"] = "icon16/application_cascade.png",
+    }
     for _, name in ipairs({ "All", "CPU", "Network", "Running" }) do
         local b = vgui.Create("DButton", subbar)
         b:SetText(name)
@@ -2344,6 +3788,21 @@ Tabs["Task Manager"] = function(container)
         b.DoClick = function()
             MH.OS.TaskView = name
             if MH.OS.Rebuild then MH.OS.Rebuild() end
+        end
+        if TM_ICONS[name] then
+            local iconMat = Material(TM_ICONS[name])
+            surface.SetFont("DermaDefault")
+            local textW = select(1, surface.GetTextSize(name))
+            local iconW, gap = 16, 8
+            b:SetContentAlignment(6)
+            b:SetTextInset(math.floor((110 - (iconW + gap + textW)) / 2), 0)
+            b.PaintOver = function(self, w, h)
+                local x = math.floor((w - (iconW + gap + textW)) / 2)
+                local y = math.floor((h - iconW) / 2)
+                surface.SetDrawColor(255, 255, 255, 255)
+                surface.SetMaterial(iconMat)
+                surface.DrawTexturedRect(x, y, iconW, iconW)
+            end
         end
     end
 
@@ -2405,76 +3864,61 @@ end
 Tabs["Log File"] = function(container)
     clear(container)
     local srv = current_server()
-    label(container, "Log File", "DermaLarge"):Dock(TOP)
+    tab_header(container, "Log File", current_server())
     if not srv then label(container, "No server"):Dock(TOP) return end
 
-    local toolbar = vgui.Create("DPanel", container)
-    toolbar:Dock(TOP)
-    toolbar:SetTall(30)
-    toolbar:DockMargin(0, 4, 0, 4)
+    local body = vgui.Create("DPanel", container)
+    body:Dock(TOP)
+    body:SetTall(640)
+    body:DockMargin(0, 6, 10, 0)
+    body:DockPadding(80, 20, 80, 20)
 
-    local editBtn = vgui.Create("DButton", toolbar)
-    editBtn:SetText("Edit")
-    editBtn:Dock(LEFT)
-    editBtn:SetWide(80)
+    if srv.log_locked then
+        local status = vgui.Create("DLabel", body)
+        status:Dock(TOP)
+        status:SetTall(18)
+        status:SetDark(true)
+        status:SetContentAlignment(5)
+        status:SetText("A log process is already running.")
+    end
 
-    local saveBtn = vgui.Create("DButton", toolbar)
-    saveBtn:SetText("Save edits")
-    saveBtn:Dock(LEFT)
-    saveBtn:DockMargin(4, 0, 0, 0)
-    saveBtn:SetWide(100)
-    saveBtn:SetVisible(false)
-
-    local cancelBtn = vgui.Create("DButton", toolbar)
-    cancelBtn:SetText("Cancel")
-    cancelBtn:Dock(LEFT)
-    cancelBtn:DockMargin(4, 0, 0, 0)
-    cancelBtn:SetWide(80)
-    cancelBtn:SetVisible(false)
-
-    local delBtn = vgui.Create("DButton", toolbar)
-    delBtn:SetText("Delete all")
-    delBtn:Dock(RIGHT)
-    delBtn:SetWide(100)
-
-    local status = vgui.Create("DLabel", container)
-    status:Dock(TOP)
-    status:SetDark(true)
-    status:SetText(srv.log_locked and "A log process is already running." or "")
-
-    local text = vgui.Create("DTextEntry", container)
+    local text = vgui.Create("DTextEntry", body)
     text:Dock(TOP)
-    text:SetTall(640)
-    text:DockMargin(0, 4, 0, 4)
+    text:SetTall(460)
+    text:DockMargin(0, 10, 0, 0)
     text:SetMultiline(true)
-    text:SetEditable(false)
+    text:SetEditable(true)
     text:SetVerticalScrollbarEnabled(true)
     text:SetValue(tostring(srv.log_text or ""))
 
+    local btnRow = vgui.Create("DPanel", body)
+    btnRow:Dock(TOP)
+    btnRow:SetTall(36)
+    btnRow:DockMargin(0, 16, 0, 0)
+    btnRow.Paint = function() end
+
+    local editBtn = vgui.Create("DButton", btnRow)
+    editBtn:SetSize(130, 32)
+    editBtn:SetText("Edit log file")
     editBtn.DoClick = function()
-        text:SetEditable(true)
-        editBtn:SetVisible(false)
-        saveBtn:SetVisible(true)
-        cancelBtn:SetVisible(true)
-    end
-    cancelBtn.DoClick = function()
-        text:SetEditable(false)
-        text:SetValue(tostring(srv.log_text or ""))
-        editBtn:SetVisible(true)
-        saveBtn:SetVisible(false)
-        cancelBtn:SetVisible(false)
-    end
-    saveBtn.DoClick = function()
         send_cmd("log_edit_submit", { server_id = srv.id, content = text:GetValue() })
-        text:SetEditable(false)
-        editBtn:SetVisible(true)
-        saveBtn:SetVisible(false)
-        cancelBtn:SetVisible(false)
     end
+
+    local delBtn = vgui.Create("DButton", btnRow)
+    delBtn:SetSize(130, 32)
+    delBtn:SetText("Delete all")
     delBtn.DoClick = function()
         Derma_Query("Spawn a process to wipe this server's log?", "Delete log",
             "Delete", function() send_cmd("log_delete_all", { server_id = srv.id }) end,
             "Cancel", function() end)
+    end
+
+    local gap = 10
+    btnRow.PerformLayout = function(self)
+        local totalW = 130 + gap + 130
+        local x = math.floor((self:GetWide() - totalW) / 2)
+        editBtn:SetPos(x, 0)
+        delBtn:SetPos(x + 130 + gap, 0)
     end
 end
 
@@ -2518,12 +3962,16 @@ end
 
 Tabs["University"] = function(container)
     clear(container)
-    label(container, "University", "DermaLarge"):Dock(TOP)
+    tab_header(container, "University", current_server())
 
     local subbar = vgui.Create("DPanel", container)
     subbar:Dock(TOP)
     subbar:SetTall(28)
     subbar:DockMargin(0, 2, 0, 6)
+    local UNIV_ICONS = {
+        ["Certifications"]      = "icon16/book_addresses.png",
+        ["Research softwares"]  = "icon16/find.png",
+    }
     for _, name in ipairs({ "Certifications", "Research softwares" }) do
         local b = vgui.Create("DButton", subbar)
         b:SetText(name)
@@ -2533,6 +3981,21 @@ Tabs["University"] = function(container)
         b.DoClick = function()
             MH.OS.UniversityView = name == "Certifications" and "Certifications" or "Research"
             if MH.OS.Rebuild then MH.OS.Rebuild() end
+        end
+        if UNIV_ICONS[name] then
+            local iconMat = Material(UNIV_ICONS[name])
+            surface.SetFont("DermaDefault")
+            local textW = select(1, surface.GetTextSize(name))
+            local iconW, gap = 16, 8
+            b:SetContentAlignment(6)
+            b:SetTextInset(math.floor((170 - (iconW + gap + textW)) / 2), 0)
+            b.PaintOver = function(self, w, h)
+                local x = math.floor((w - (iconW + gap + textW)) / 2)
+                local y = math.floor((h - iconW) / 2)
+                surface.SetDrawColor(255, 255, 255, 255)
+                surface.SetMaterial(iconMat)
+                surface.DrawTexturedRect(x, y, iconW, iconW)
+            end
         end
     end
 
@@ -2568,7 +4031,7 @@ Tabs["University"] = function(container)
                         meta.name or "?",
                         MH.Data.DotVersion(curV),
                         "yours",
-                        "$" .. cost,
+                        "$" .. fmt_cash(cost),
                         "Research")
                     line.MH_Mode = "research"
                     line.MH_Cost = cost
@@ -2588,7 +4051,7 @@ Tabs["University"] = function(container)
                         meta.name or "?",
                         MH.Data.DotVersion(curV),
                         "no",
-                        "$" .. cost,
+                        "$" .. fmt_cash(cost),
                         "License")
                     line.MH_Mode = "license"
                     line.MH_Cost = cost
@@ -2657,98 +4120,171 @@ end
 Tabs["Finances"] = function(container)
     clear(container)
     local p = MH.OS.State.player or {}
-    label(container, "Finances", "DermaLarge"):Dock(TOP)
-    label(container, "Default account balance: $" .. tostring(tonumber(p.cash or 0))):Dock(TOP)
-    label(container, "Bitcoin:      " .. string.format("%.7f", tonumber(p.bitcoin or 0))):Dock(TOP)
-    label(container, "Reputation:   " .. tostring(tonumber(p.exp or 0))):Dock(TOP)
+    local btcInfo = MH.OS.State.btc or {}
+    tab_header(container, "Finances", current_server())
 
-    label(container, "Bank accounts", "DermaDefaultBold"):Dock(TOP)
-    local openRow = vgui.Create("DPanel", container)
-    openRow:Dock(TOP)
-    openRow:SetTall(28)
-    openRow:DockMargin(0, 4, 0, 4)
-    local combo = vgui.Create("DComboBox", openRow)
-    combo:Dock(FILL)
-    combo:SetValue("Pick a bank to open an account at...")
-    local comboBanks = {}
-    for _, b in ipairs(MH.OS.State.available_banks or {}) do
-        if tonumber(b.owned or 0) == 0 then
-            table.insert(comboBanks, b)
-            combo:AddChoice(tostring(b.name) .. "   " .. tostring(b.ip), #comboBanks)
-        end
+    local balanceWrap = vgui.Create("DPanel", container)
+    balanceWrap:Dock(TOP)
+    balanceWrap:SetTall(60)
+    balanceWrap:DockMargin(0, 40, 0, 0)
+    balanceWrap.Paint = function() end
+    local balBox = vgui.Create("DPanel", balanceWrap)
+    balBox:SetSize(260, 50)
+    balanceWrap.PerformLayout = function(self)
+        balBox:SetPos(math.floor((self:GetWide() - 260) / 2), 0)
     end
-    if #comboBanks == 0 then
-        local anyKnown = #(MH.OS.State.available_banks or {})
-        if anyKnown == 0 then
-            combo:SetValue("No banks discovered yet. Scan or visit a bank IP first.")
-        else
-            combo:SetValue("You already have an account at every discovered bank.")
-        end
-        combo:SetEnabled(false)
+    local balLbl = vgui.Create("DLabel", balBox)
+    balLbl:Dock(FILL)
+    balLbl:SetDark(false)
+    balLbl:SetTextColor(Color(60, 160, 70))
+    balLbl:SetFont("DermaLarge")
+    balLbl:SetContentAlignment(5)
+    balLbl:SetTextInset(20, 0)
+    balLbl:SetText("$" .. fmt_cash(p.cash))
+    local finMoneyMat = Material("icon16/money.png")
+    local finIconSize = 28
+    balLbl.PaintOver = function(self, w, h)
+        surface.SetFont("DermaLarge")
+        local tw = select(1, surface.GetTextSize(self:GetText() or ""))
+        local textX = math.floor((w - tw) / 2) + 10
+        local iconX = textX - finIconSize - 64
+        surface.SetDrawColor(255, 255, 255, 255)
+        surface.SetMaterial(finMoneyMat)
+        surface.DrawTexturedRect(iconX, math.floor((h - finIconSize) / 2), finIconSize, finIconSize)
     end
-    local openB = vgui.Create("DButton", openRow)
-    openB:SetText("Open account")
-    openB:Dock(RIGHT)
-    openB:SetWide(140)
-    openB:DockMargin(4, 0, 0, 0)
-    openB.DoClick = function()
-        local _, idx = combo:GetSelected()
-        local pick = idx and comboBanks[tonumber(idx)]
-        if not pick then
-            MH.Api = MH.Api or {}
-            MH.OS.ShowNotify("warn", "Select a bank first")
-            return
+
+    local function fin_card(title, iconPath, btnText, btnClick, bodyFiller)
+        local wrap = vgui.Create("DPanel", container)
+        wrap:Dock(TOP)
+        wrap:SetTall(170)
+        wrap:DockMargin(0, 16, 0, 0)
+        wrap.Paint = function() end
+        local card = vgui.Create("DPanel", wrap)
+        card:SetSize(560, 170)
+        wrap.PerformLayout = function(self, w, h)
+            card:SetPos(math.floor((w - 560) / 2), 0)
         end
-        send_cmd("bank_create", { bank_id = pick.id })
+        local head = vgui.Create("DPanel", card)
+        head:Dock(TOP)
+        head:SetTall(28)
+        local hIconMat = Material(iconPath)
+        local hIcon = vgui.Create("DPanel", head)
+        hIcon:Dock(LEFT)
+        hIcon:SetWide(32)
+        hIcon.Paint = function(self, w, h)
+            surface.SetDrawColor(255, 255, 255, 255)
+            surface.SetMaterial(hIconMat)
+            surface.DrawTexturedRect(math.floor((w - 16) / 2), math.floor((h - 16) / 2), 16, 16)
+        end
+        local hLbl = vgui.Create("DLabel", head)
+        hLbl:Dock(FILL)
+        hLbl:SetFont("DermaDefaultBold")
+        hLbl:SetDark(true)
+        hLbl:SetText(title)
+        local hBtn = vgui.Create("DButton", head)
+        hBtn:Dock(RIGHT)
+        hBtn:SetWide(110)
+        hBtn:DockMargin(0, 2, 2, 2)
+        hBtn:SetText(btnText)
+        hBtn.DoClick = btnClick
+        local body = vgui.Create("DPanel", card)
+        body:Dock(FILL)
+        body:DockPadding(10, 10, 10, 10)
+        bodyFiller(body)
+        return card
+    end
+
+    local function go_internet(ip)
+        send_cmd("internet_goto", { ip = ip })
+        MH.OS.ActiveTab = "Internet"
+        MH.OS.InternetMainTab = "Index"
+        if MH.OS.Rebuild then MH.OS.Rebuild() end
     end
 
     local banks = MH.OS.State.banks or {}
-    for _, b in ipairs(banks) do
-        local brow = vgui.Create("DPanel", container)
-        brow:Dock(TOP)
-        brow:SetTall(28)
-        brow:DockMargin(0, 2, 0, 0)
-        local binfo = vgui.Create("DLabel", brow)
-        binfo:Dock(FILL)
-        binfo:SetDark(true)
-        binfo:SetFont("DermaDefaultBold")
-        binfo:SetText("  " .. tostring(b.bank_name or "?") .. "   " .. tostring(b.bank_ip or "") ..
-            "   acc " .. tostring(b.acc_num) .. "   pass " .. tostring(b.acc_pass) .. "   $" .. tostring(b.cash))
-        local closeB = vgui.Create("DButton", brow)
-        closeB:SetText("Close")
-        closeB:Dock(RIGHT) closeB:SetWide(70) closeB:DockMargin(0, 2, 6, 2)
-        closeB.DoClick = function()
-            Derma_Query("Close account " .. tostring(b.acc_num) .. "?",
-                "Close account", "Close",
-                function() send_cmd("bank_close", { acc = b.acc_num }) end,
-                "Cancel", function() end)
-        end
-        local chpassB = vgui.Create("DButton", brow)
-        chpassB:SetText("Change pass")
-        chpassB:Dock(RIGHT) chpassB:SetWide(110) chpassB:DockMargin(0, 2, 2, 2)
-        chpassB.DoClick = function() send_cmd("bank_change_pass", { acc = b.acc_num }) end
-        local withdrawB = vgui.Create("DButton", brow)
-        withdrawB:SetText("Withdraw")
-        withdrawB:Dock(RIGHT) withdrawB:SetWide(90) withdrawB:DockMargin(0, 2, 2, 2)
-        withdrawB.DoClick = function() send_cmd("bank_collect", { acc = b.acc_num }) end
-        local loginB = vgui.Create("DButton", brow)
-        loginB:SetText("Login via Internet")
-        loginB:Dock(RIGHT) loginB:SetWide(140) loginB:DockMargin(0, 2, 2, 2)
-        loginB.DoClick = function()
-            send_cmd("internet_goto", { ip = tostring(b.bank_ip or "") })
-            send_cmd("bank_internet_login", { ip = tostring(b.bank_ip or ""), acc = b.acc_num, pass = b.acc_pass })
-            MH.OS.ActiveTab = "Internet"
-            if MH.OS.Rebuild then MH.OS.Rebuild() end
-        end
+    for idx, b in ipairs(banks) do
+        fin_card("Account #" .. idx, "icon16/computer.png", "Access bank",
+            function() go_internet(tostring(b.bank_ip or "")) end,
+            function(body)
+                local nameLbl = vgui.Create("DLabel", body)
+                nameLbl:Dock(TOP)
+                nameLbl:SetTall(28)
+                nameLbl:SetFont("DermaDefaultBold")
+                nameLbl:SetDark(true)
+                nameLbl:SetContentAlignment(5)
+                nameLbl:SetText(tostring(b.bank_name or "?"))
+                local balHdr = vgui.Create("DLabel", body)
+                balHdr:Dock(TOP)
+                balHdr:SetTall(22)
+                balHdr:DockMargin(0, 12, 0, 0)
+                balHdr:SetFont("DermaDefaultBold")
+                balHdr:SetDark(true)
+                balHdr:SetContentAlignment(5)
+                balHdr:SetText("Account Balance")
+                local balVal = vgui.Create("DPanel", body)
+                balVal:Dock(TOP)
+                balVal:SetTall(20)
+                balVal.Paint = function(self, w, h)
+                    local cash = "$" .. fmt_cash(b.cash)
+                    local rest = " at #" .. tostring(b.acc_num or "")
+                    surface.SetFont("DermaDefault")
+                    local cw = select(1, surface.GetTextSize(cash))
+                    local rw = select(1, surface.GetTextSize(rest))
+                    local totalW = cw + rw
+                    local x = math.floor((w - totalW) / 2)
+                    local sk = self:GetSkin()
+                    local tc = (sk and sk.Colours and sk.Colours.Label and sk.Colours.Label.Default) or color_black
+                    draw.SimpleText(cash, "DermaDefault", x, h / 2,
+                        Color(80, 140, 80), TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
+                    draw.SimpleText(rest, "DermaDefault", x + cw, h / 2,
+                        tc, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
+                end
+            end)
     end
 
+    fin_card("BTC Wallet", "icon16/application_osx_terminal.png", "Access Market",
+        function()
+            local svcs = MH.OS.State.public_services or {}
+            local btcSvc = svcs.BITCOIN
+            if btcSvc and btcSvc.ip then go_internet(btcSvc.ip) end
+        end,
+        function(body)
+            local addrHdr = vgui.Create("DLabel", body)
+            addrHdr:Dock(TOP)
+            addrHdr:SetTall(22)
+            addrHdr:SetFont("DermaDefaultBold")
+            addrHdr:SetDark(true)
+            addrHdr:SetContentAlignment(5)
+            addrHdr:SetText("Public Address")
+            local addrVal = vgui.Create("DLabel", body)
+            addrVal:Dock(TOP)
+            addrVal:SetTall(20)
+            addrVal:SetDark(true)
+            addrVal:SetContentAlignment(5)
+            addrVal:SetText(tostring(btcInfo.address or ""))
+            local btcHdr = vgui.Create("DLabel", body)
+            btcHdr:Dock(TOP)
+            btcHdr:SetTall(22)
+            btcHdr:DockMargin(0, 12, 0, 0)
+            btcHdr:SetFont("DermaDefaultBold")
+            btcHdr:SetDark(true)
+            btcHdr:SetContentAlignment(5)
+            btcHdr:SetText("Bitcoins")
+            local btcVal = vgui.Create("DLabel", body)
+            btcVal:Dock(TOP)
+            btcVal:SetTall(20)
+            btcVal:SetDark(true)
+            btcVal:SetContentAlignment(5)
+            btcVal:SetText(string.format("%.7f", tonumber(p.bitcoin or btcInfo.amount or 0)) .. " BTC")
+        end)
 end
 
 MH.OS.HackedView = MH.OS.HackedView or "IP List"
+MH.OS.CollectShowingResult = MH.OS.CollectShowingResult or false
 
 Tabs["Hacked Database"] = function(container)
     clear(container)
-    label(container, "Hacked Database", "DermaLarge"):Dock(TOP)
+    tab_header(container, "Hacked Database", current_server())
 
     local subbar = vgui.Create("DPanel", container)
     subbar:Dock(TOP)
@@ -2795,19 +4331,21 @@ Tabs["Hacked Database"] = function(container)
             sortRow:Dock(TOP)
             sortRow:SetTall(28)
             sortRow:DockMargin(0, 0, 0, 4)
+            sortRow.Paint = function() end
             local sortLbl = vgui.Create("DLabel", sortRow)
             sortLbl:Dock(LEFT)
             sortLbl:DockMargin(4, 6, 6, 0)
             sortLbl:SetDark(true)
-            sortLbl:SetText("Sort:")
+            sortLbl:SetText("Sort by:")
             sortLbl:SizeToContents()
             MH.OS.HackedSort = MH.OS.HackedSort or "newest"
             local combo = vgui.Create("DComboBox", sortRow)
             combo:Dock(LEFT)
-            combo:SetWide(200)
+            combo:SetWide(220)
             combo:DockMargin(0, 2, 0, 2)
             local sortOptions = {
-                { k = "newest",   t = "Hacked time (newest first)" },
+                { k = "newest",   t = "Hacked time (newest)" },
+                { k = "oldest",   t = "Hacked time (oldest)" },
                 { k = "name",     t = "Target name (a-z)" },
                 { k = "ip",       t = "Target IP" },
             }
@@ -2827,88 +4365,209 @@ Tabs["Hacked Database"] = function(container)
             table.sort(sortedHacked, function(a, b)
                 if MH.OS.HackedSort == "name" then return tostring(a.target_name or "") < tostring(b.target_name or "") end
                 if MH.OS.HackedSort == "ip" then return tostring(a.ip or "") < tostring(b.ip or "") end
+                if MH.OS.HackedSort == "oldest" then return (tonumber(a.stamp) or 0) < (tonumber(b.stamp) or 0) end
                 return (tonumber(a.stamp) or 0) > (tonumber(b.stamp) or 0)
             end)
 
-            label(body, "Compromised machines", "DermaDefault"):Dock(TOP)
-            local headerRow = vgui.Create("DPanel", body)
-            headerRow:Dock(TOP)
-            headerRow:SetTall(20)
-            headerRow:DockMargin(0, 4, 0, 0)
-            local function hcol(txt, wide, dock)
-                local l = vgui.Create("DLabel", headerRow)
-                l:Dock(dock or LEFT)
-                if wide then l:SetWide(wide) end
-                l:SetDark(true)
-                l:SetFont("DermaDefaultBold")
-                l:SetText("  " .. txt)
+            local virusByServer = {}
+            for _, v in ipairs(MH.OS.State.installed_viruses or {}) do
+                local sid = tonumber(v.server_id or 0)
+                if sid > 0 and not virusByServer[sid] then virusByServer[sid] = v end
             end
-            hcol("IP",       130)
-            hcol("Target",   220)
-            hcol("Password", 110)
-            hcol("Actions",  nil, FILL)
+
+            local USER_ICON = Material("icon16/computer.png")
+            local PASS_ICON = Material("icon16/key.png")
+            local BUG_ICON  = Material("icon16/bug.png")
+            local NET_ICON  = Material("icon16/connect.png")
+            local HDD_ICON  = Material("icon16/drive.png")
+            local CPU_ICON  = Material("icon16/cog.png")
+            local RAM_ICON  = Material("icon16/chart_bar.png")
+            local DEL_ICON  = Material("icon16/delete.png")
+
+            local function fmt_hdd(mb)
+                mb = tonumber(mb) or 0
+                if mb >= 1000 then return math.floor(mb / 1000) .. " GB" end
+                return mb .. " MB"
+            end
+
+            local function ago_text(stamp)
+                local nowT = os.time()
+                local diff = math.max(0, nowT - (tonumber(stamp) or nowT))
+                if diff < 60 then return diff .. "s ago" end
+                if diff < 3600 then return math.floor(diff / 60) .. "m ago" end
+                if diff < 86400 then return math.floor(diff / 3600) .. "h ago" end
+                if diff < 86400 * 30 then return math.floor(diff / 86400) .. "d ago" end
+                if diff < 86400 * 365 then return math.floor(diff / (86400 * 30)) .. " months" end
+                return math.floor(diff / (86400 * 365)) .. " years"
+            end
+
             for _, h in ipairs(sortedHacked) do
-                local hrow = vgui.Create("DPanel", body)
+                local netMb = (MH.Data.Hardware.net[tonumber(h.net_tier or 1) or 1] or {}).mbps or 1
+                local hddMb = (MH.Data.Hardware.hdd[tonumber(h.hdd_tier or 1) or 1] or {}).mb or 100
+                local cpuMhz = (MH.Data.Hardware.cpu[tonumber(h.cpu_tier or 1) or 1] or {}).mhz or 500
+                local ramMb = (MH.Data.Hardware.ram[tonumber(h.ram_tier or 1) or 1] or {}).mb or 256
+                local virus = virusByServer[tonumber(h.target_server or 0)]
+                local virusMeta = virus and (MH.Data.Soft[tonumber(virus.soft_type or 0)] or {}) or {}
+
+                local hrow = vgui.Create("DButton", body)
+                hrow:SetText("")
                 hrow:Dock(TOP)
-                hrow:SetTall(28)
+                hrow:SetTall(60)
                 hrow:DockMargin(0, 2, 0, 0)
-                local function rcol(txt, wide, dock)
-                    local l = vgui.Create("DLabel", hrow)
-                    l:Dock(dock or LEFT)
-                    if wide then l:SetWide(wide) end
-                    l:SetDark(true)
-                    l:SetText("  " .. tostring(txt or ""))
-                end
-                rcol(h.ip or "?",             130)
-                rcol(h.target_name or "?",    220)
-                rcol(h.discovered_pass or "?",110)
-                local removeB = vgui.Create("DButton", hrow)
-                removeB:SetText("Remove")
-                removeB:Dock(RIGHT) removeB:SetWide(90) removeB:DockMargin(0, 2, 6, 2)
-                removeB.DoClick = function() send_cmd("hacked_remove", { hacked_id = h.id }) end
-                local virusB = vgui.Create("DButton", hrow)
-                virusB:SetText("Install virus")
-                virusB:Dock(RIGHT) virusB:SetWide(110) virusB:DockMargin(0, 2, 2, 2)
-                virusB.DoClick = function()
-                    local m = DermaMenu()
-                    for _, st in ipairs({ 8, 9, 10, 11, 12, 20, 29 }) do
-                        m:AddOption(MH.Data.SoftName(st), function()
-                            send_cmd("virus_install", { target_server = h.target_server, soft_type = st })
-                        end)
-                    end
-                    m:Open()
-                end
-                local doomB = vgui.Create("DButton", hrow)
-                doomB:SetText("Launch DOOM")
-                doomB:Dock(RIGHT) doomB:SetWide(120) doomB:DockMargin(0, 2, 2, 2)
-                doomB.DoClick = function()
-                    local myDoom
-                    for _, s in ipairs(MH.OS.State.servers or {}) do
-                        for _, inv in ipairs(s.software or {}) do
-                            if tonumber(inv.server_id) == tonumber(h.target_server)
-                                and (tonumber(inv.soft_type) == 29 or tonumber(inv.soft_type) == 96)
-                                and inv.owner_sid == (MH.OS.State.player or {}).sid64
-                            then myDoom = inv break end
-                        end
-                        if myDoom then break end
-                    end
-                    if not myDoom then
-                        Derma_Message("Install a Doom virus on this target first (right-click, Install virus, Doom).",
-                            "No Doom planted", "OK")
-                        return
-                    end
-                    Derma_Query("Release DOOM against " .. tostring(h.ip) .. "?\nThis is irreversible and will escalate everything.",
-                        "Launch DOOM", "Release",
-                        function() send_cmd("doom_launch", { target_server = h.target_server, soft_id = myDoom.id }) end,
-                        "Cancel", function() end)
-                end
-                local gotoB = vgui.Create("DButton", hrow)
-                gotoB:SetText("Open in Internet")
-                gotoB:Dock(RIGHT) gotoB:SetWide(130) gotoB:DockMargin(0, 2, 2, 2)
-                gotoB.DoClick = function()
+                hrow.DoClick = function()
                     send_cmd("internet_goto", { ip = tostring(h.ip or "") })
                     MH.OS.ActiveTab = "Internet"
                     if MH.OS.Rebuild then MH.OS.Rebuild() end
+                end
+                hrow.Paint = function(self, w, hgt)
+                    derma.SkinHook("Paint", "Panel", self, w, hgt)
+                end
+
+                local ipLbl = vgui.Create("DLabel", hrow)
+                ipLbl:SetPos(14, 6)
+                ipLbl:SetFont("DermaDefaultBold")
+                ipLbl:SetDark(true)
+                ipLbl:SetText(tostring(h.ip or "?"))
+                ipLbl:SetSize(220, 20)
+
+                local credStrip = vgui.Create("DPanel", hrow)
+                credStrip:SetPos(14, 32)
+                credStrip:SetSize(220, 18)
+                local userTxt = "root"
+                local passTxt = tostring(h.discovered_pass or "")
+                credStrip.Paint = function(self, w, hgt)
+                    local sk = self:GetSkin()
+                    local tc = (sk and sk.Colours and sk.Colours.Label and sk.Colours.Label.Default) or color_black
+                    surface.SetDrawColor(255, 255, 255, 255)
+                    surface.SetMaterial(USER_ICON)
+                    surface.DrawTexturedRect(0, 1, 16, 16)
+                    draw.SimpleText(userTxt, "DermaDefault", 20, hgt / 2, tc,
+                        TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
+                    surface.SetFont("DermaDefault")
+                    local uw = select(1, surface.GetTextSize(userTxt))
+                    surface.SetDrawColor(255, 255, 255, 255)
+                    surface.SetMaterial(PASS_ICON)
+                    surface.DrawTexturedRect(30 + uw, 1, 16, 16)
+                    draw.SimpleText(passTxt, "DermaDefault", 50 + uw, hgt / 2,
+                        Color(170, 120, 60), TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
+                end
+
+                local virusCell = vgui.Create("DPanel", hrow)
+                virusCell:SetPos(260, 6)
+                virusCell:SetSize(380, 48)
+                virusCell.Paint = function(self, w, hgt)
+                    local sk = self:GetSkin()
+                    local tc = (sk and sk.Colours and sk.Colours.Label and sk.Colours.Label.Default) or color_black
+                    if virus then
+                        local baseName = tostring(virus.soft_name ~= nil and virus.soft_name ~= "" and virus.soft_name or virusMeta.name or ("#" .. tostring(virus.soft_type)))
+                        local name = baseName .. tostring(virusMeta.ext or "")
+                        surface.SetDrawColor(255, 255, 255, 255)
+                        surface.SetMaterial(BUG_ICON)
+                        surface.DrawTexturedRect(0, 2, 16, 16)
+                        draw.SimpleText(name, "DermaDefaultBold", 20, 10, tc,
+                            TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
+                        draw.SimpleText(ago_text(virus.last_collect), "DermaDefault", 20, 32,
+                            Color(140, 140, 140), TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
+                    else
+                        draw.SimpleText("No running virus", "DermaDefault", 0, hgt / 2,
+                            Color(140, 140, 140), TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
+                    end
+                end
+
+                local statsCell = vgui.Create("DPanel", hrow)
+                statsCell:SetSize(140, 48)
+                statsCell.Paint = function(self, w, hgt)
+                    local sk = self:GetSkin()
+                    local tc = (sk and sk.Colours and sk.Colours.Label and sk.Colours.Label.Default) or color_black
+                    surface.SetDrawColor(255, 255, 255, 255)
+                    surface.SetMaterial(NET_ICON)
+                    surface.DrawTexturedRect(0, 4, 16, 16)
+                    draw.SimpleText(netMb .. " Mbit/s", "DermaDefault", 20, 12, tc,
+                        TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
+                    surface.SetDrawColor(255, 255, 255, 255)
+                    surface.SetMaterial(HDD_ICON)
+                    surface.DrawTexturedRect(0, 26, 16, 16)
+                    draw.SimpleText(fmt_hdd(hddMb), "DermaDefault", 20, 34, tc,
+                        TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
+                end
+
+                local function fmt_ram(mb)
+                    if mb >= 1024 then return math.floor(mb / 1024) .. " GB" end
+                    return mb .. " MB"
+                end
+                local tierCell = vgui.Create("DPanel", hrow)
+                tierCell:SetSize(110, 48)
+                tierCell.Paint = function(self, w, hgt)
+                    local sk = self:GetSkin()
+                    local tc = (sk and sk.Colours and sk.Colours.Label and sk.Colours.Label.Default) or color_black
+                    surface.SetDrawColor(255, 255, 255, 255)
+                    surface.SetMaterial(CPU_ICON)
+                    surface.DrawTexturedRect(0, 4, 16, 16)
+                    draw.SimpleText(cpuMhz .. " MHz", "DermaDefault", 20, 12, tc,
+                        TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
+                    surface.SetDrawColor(255, 255, 255, 255)
+                    surface.SetMaterial(RAM_ICON)
+                    surface.DrawTexturedRect(0, 26, 16, 16)
+                    draw.SimpleText(fmt_ram(ramMb), "DermaDefault", 20, 34, tc,
+                        TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
+                end
+
+                local removeB = vgui.Create("DButton", hrow)
+                removeB:SetText("")
+                removeB:SetSize(28, 28)
+                removeB:SetTooltip("Remove")
+                removeB.Paint = function(self, w, hgt)
+                    surface.SetDrawColor(255, 255, 255, 255)
+                    surface.SetMaterial(DEL_ICON)
+                    surface.DrawTexturedRect(math.floor((w - 16) / 2), math.floor((hgt - 16) / 2), 16, 16)
+                end
+                removeB.DoClick = function() send_cmd("hacked_remove", { hacked_id = h.id }) end
+
+                hrow.PerformLayout = function(self, w, hgt)
+                    local rightX = w - 48
+                    removeB:SetPos(rightX, math.floor((hgt - 28) / 2))
+                    tierCell:SetPos(rightX - 110 - 10, 6)
+                    statsCell:SetPos(rightX - 110 - 10 - 140 - 10, 6)
+                end
+
+                hrow.OnMousePressed = function(self, mcode)
+                    if mcode == MOUSE_RIGHT then
+                        local m = DermaMenu()
+                        m:AddOption("Open in Internet", function()
+                            send_cmd("internet_goto", { ip = tostring(h.ip or "") })
+                            MH.OS.ActiveTab = "Internet"
+                            if MH.OS.Rebuild then MH.OS.Rebuild() end
+                        end)
+                        local vm = m:AddSubMenu("Install virus")
+                        for _, st in ipairs({ 8, 9, 10, 11, 12, 20, 29 }) do
+                            vm:AddOption(MH.Data.SoftName(st), function()
+                                send_cmd("virus_install", { target_server = h.target_server, soft_type = st })
+                            end)
+                        end
+                        m:AddOption("Launch DOOM", function()
+                            local myDoom
+                            for _, s in ipairs(MH.OS.State.servers or {}) do
+                                for _, inv in ipairs(s.software or {}) do
+                                    if tonumber(inv.server_id) == tonumber(h.target_server)
+                                        and (tonumber(inv.soft_type) == 29 or tonumber(inv.soft_type) == 96)
+                                        and inv.owner_sid == (MH.OS.State.player or {}).sid64
+                                    then myDoom = inv break end
+                                end
+                                if myDoom then break end
+                            end
+                            if not myDoom then
+                                Derma_Message("Install a Doom virus on this target first.",
+                                    "No Doom planted", "OK")
+                                return
+                            end
+                            Derma_Query("Release DOOM against " .. tostring(h.ip) .. "?",
+                                "Launch DOOM", "Release",
+                                function() send_cmd("doom_launch", { target_server = h.target_server, soft_id = myDoom.id }) end,
+                                "Cancel", function() end)
+                        end)
+                        m:AddOption("Remove", function() send_cmd("hacked_remove", { hacked_id = h.id }) end)
+                        m:Open()
+                    end
                 end
             end
         elseif MH.OS.HackedView == "Bank Accounts" then
@@ -2953,98 +4612,427 @@ Tabs["Hacked Database"] = function(container)
                 end
             end
         elseif MH.OS.HackedView == "Collect" then
-            local viruses = MH.OS.State.installed_viruses or {}
-            label(body, "Installed viruses (" .. #viruses .. ")", "DermaDefaultBold"):Dock(TOP)
-            local collectB = vgui.Create("DButton", body)
-            collectB:Dock(TOP)
-            collectB:DockMargin(0, 6, 0, 6)
-            collectB:SetTall(32)
-            collectB:SetText("Collect from all installed viruses")
-            collectB.DoClick = function() send_cmd("virus_collect", {}) end
-            if #viruses == 0 then
-                label(body, "No viruses installed on any host. Hack a target and install a Spam, Warez, DDoS, or Miner virus on it."):Dock(TOP)
-            else
-                local list = vgui.Create("DListView", body)
-                list:Dock(TOP)
-                list:SetTall(400)
-                list:AddColumn("Host"):SetFixedWidth(160)
-                list:AddColumn("IP"):SetFixedWidth(140)
-                list:AddColumn("Virus"):SetFixedWidth(130)
-                list:AddColumn("Version"):SetFixedWidth(70)
-                list:AddColumn("Last collect"):SetFixedWidth(160)
-                list:AddColumn("Status")
-                local nowT = os.time()
-                for _, v in ipairs(viruses) do
-                    local meta = MH.Data.Soft[tonumber(v.soft_type or 0)] or {}
-                    local last = tonumber(v.last_collect or 0) or 0
-                    local lastStr = last > 0 and os.date("%Y-%m-%d %H:%M", last) or "never"
-                    local waited = last == 0 and 600 or (nowT - last)
-                    local status = waited >= 600 and "Ready" or ("Cooling (" .. (600 - waited) .. "s)")
-                    if tonumber(v.hidden or 0) == 1 then status = status .. "  [hidden]" end
-                    list:AddLine(
-                        tostring(v.host_name or "?"),
-                        tostring(v.host_ip or "?"),
-                        tostring(meta.name or ("#" .. tostring(v.soft_type))),
-                        "v" .. MH.Data.DotVersion(v.soft_version),
-                        lastStr,
-                        status)
+            local p = MH.OS.State.player or {}
+            local summary
+            if p.last_collect_json and p.last_collect_json ~= "" and p.last_collect_json ~= "NULL" then
+                summary = util.JSONToTable(tostring(p.last_collect_json))
+            end
+            local function fmt_hours(secs)
+                secs = tonumber(secs) or 0
+                local hours = math.floor(secs / 3600)
+                local mins = math.floor((secs % 3600) / 60)
+                return hours .. " hours and " .. mins .. " minutes"
+            end
+            local function render_collect_info(parent, withGoBack)
+                local head = vgui.Create("DPanel", parent)
+                head:Dock(TOP)
+                head:SetTall(28)
+                local hIconMat = Material("icon16/report.png")
+                local hIcon = vgui.Create("DPanel", head)
+                hIcon:Dock(LEFT)
+                hIcon:SetWide(32)
+                hIcon.Paint = function(self, w, hgt)
+                    surface.SetDrawColor(255, 255, 255, 255)
+                    surface.SetMaterial(hIconMat)
+                    surface.DrawTexturedRect(math.floor((w - 16) / 2), math.floor((hgt - 16) / 2), 16, 16)
+                end
+                local hLbl = vgui.Create("DLabel", head)
+                hLbl:Dock(FILL)
+                hLbl:SetFont("DermaDefaultBold")
+                hLbl:SetDark(true)
+                hLbl:SetText(withGoBack and "Collect Information" or "Last Collect Information")
+                if withGoBack then
+                    local back = vgui.Create("DButton", head)
+                    back:Dock(RIGHT)
+                    back:SetWide(80)
+                    back:DockMargin(0, 2, 2, 2)
+                    back:SetText("Go Back")
+                    back.DoClick = function()
+                        MH.OS.CollectShowingResult = false
+                        if MH.OS.Rebuild then MH.OS.Rebuild() end
+                    end
+                end
+                local inner = vgui.Create("DPanel", parent)
+                inner:Dock(FILL)
+                inner:DockPadding(14, 12, 14, 12)
+                if not summary or not summary.details or #summary.details == 0 then
+                    local empty = vgui.Create("DLabel", inner)
+                    empty:Dock(TOP)
+                    empty:SetTall(22)
+                    empty:SetDark(true)
+                    empty:SetText("Oops. You still havent collected :(")
+                    return
+                end
+                for _, d in ipairs(summary.details) do
+                    if (d.cash or 0) > 0 and tonumber(d.soft_type) == 8 then
+                        local line = vgui.Create("DPanel", inner)
+                        line:Dock(TOP)
+                        line:SetTall(18)
+                        line.Paint = function(self, w, hgt)
+                            local sk = self:GetSkin()
+                            local tc = (sk and sk.Colours and sk.Colours.Label and sk.Colours.Label.Default) or color_black
+                            local work = fmt_hours(d.work_time)
+                            local emails = tostring(d.emails or 0)
+                            local cash = "$" .. fmt_cash(d.cash)
+                            local bonus = d.bonus and " - BONUS!" or ""
+                            draw.SimpleText("Server " .. tostring(d.host_ip or "") .. " worked for ", "DermaDefault", 0, hgt / 2, tc, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
+                            surface.SetFont("DermaDefault")
+                            local x = select(1, surface.GetTextSize("Server " .. tostring(d.host_ip or "") .. " worked for "))
+                            draw.SimpleText(work, "DermaDefaultBold", x, hgt / 2, tc, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
+                            x = x + select(1, surface.GetTextSize(work))
+                            surface.SetFont("DermaDefault")
+                            draw.SimpleText(" and mailed ", "DermaDefault", x, hgt / 2, tc, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
+                            x = x + select(1, surface.GetTextSize(" and mailed "))
+                            draw.SimpleText(emails, "DermaDefault", x, hgt / 2, Color(200, 60, 60), TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
+                            x = x + select(1, surface.GetTextSize(emails))
+                            draw.SimpleText(" emails, generating ", "DermaDefault", x, hgt / 2, tc, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
+                            x = x + select(1, surface.GetTextSize(" emails, generating "))
+                            draw.SimpleText(cash, "DermaDefaultBold", x, hgt / 2, Color(80, 140, 80), TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
+                            if d.bonus then
+                                surface.SetFont("DermaDefaultBold")
+                                x = x + select(1, surface.GetTextSize(cash))
+                                draw.SimpleText(bonus, "DermaDefaultBold", x, hgt / 2, Color(80, 140, 80), TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
+                            end
+                        end
+                    elseif (d.cash or 0) > 0 and tonumber(d.soft_type) == 9 then
+                        local l = vgui.Create("DLabel", inner)
+                        l:Dock(TOP)
+                        l:SetTall(18)
+                        l:SetDark(true)
+                        l:SetText("Server " .. tostring(d.host_ip) .. " seeded warez, generating $" .. fmt_cash(d.cash))
+                    elseif (d.btc or 0) > 0 and tonumber(d.soft_type) == 20 then
+                        local l = vgui.Create("DLabel", inner)
+                        l:Dock(TOP)
+                        l:SetTall(18)
+                        l:SetDark(true)
+                        l:SetText("Server " .. tostring(d.host_ip) .. " mined " .. string.format("%.7f", d.btc) .. " BTC")
+                    end
+                end
+                if (summary.collector_bonus_pct or 0) > 0 then
+                    local spacer = vgui.Create("DPanel", inner)
+                    spacer:Dock(TOP)
+                    spacer:SetTall(10)
+                    spacer.Paint = function() end
+                    local cbRow = vgui.Create("DPanel", inner)
+                    cbRow:Dock(TOP)
+                    cbRow:SetTall(18)
+                    cbRow.Paint = function(self, w, hgt)
+                        local sk = self:GetSkin()
+                        local tc = (sk and sk.Colours and sk.Colours.Label and sk.Colours.Label.Default) or color_black
+                        draw.SimpleText("Collector bonus: ", "DermaDefault", 0, hgt / 2, tc, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
+                        surface.SetFont("DermaDefault")
+                        local x = select(1, surface.GetTextSize("Collector bonus: "))
+                        draw.SimpleText(string.format("%g%%", summary.collector_bonus_pct), "DermaDefaultBold", x, hgt / 2, tc, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
+                    end
+                end
+                if (summary.cash_total or 0) > 0 then
+                    local spacer2 = vgui.Create("DPanel", inner)
+                    spacer2:Dock(TOP)
+                    spacer2:SetTall(10)
+                    spacer2.Paint = function() end
+                    local xferRow = vgui.Create("DPanel", inner)
+                    xferRow:Dock(TOP)
+                    xferRow:SetTall(18)
+                    xferRow.Paint = function(self, w, hgt)
+                        local sk = self:GetSkin()
+                        local tc = (sk and sk.Colours and sk.Colours.Label and sk.Colours.Label.Default) or color_black
+                        local cash = "$" .. fmt_cash(summary.cash_total)
+                        local acc = "#" .. tostring(summary.account or "")
+                        draw.SimpleText(cash, "DermaDefaultBold", 0, hgt / 2, Color(80, 140, 80), TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
+                        surface.SetFont("DermaDefaultBold")
+                        local x = select(1, surface.GetTextSize(cash))
+                        surface.SetFont("DermaDefault")
+                        draw.SimpleText(" were transfered to ", "DermaDefault", x, hgt / 2, tc, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
+                        x = x + select(1, surface.GetTextSize(" were transfered to "))
+                        draw.SimpleText(acc, "DermaDefault", x, hgt / 2, tc, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
+                    end
                 end
             end
-        elseif MH.OS.HackedView == "DDoS" then
-            label(body, "Launch DDoS attack", "DermaLarge"):Dock(TOP)
-            local warn = vgui.Create("DLabel", body)
-            warn:Dock(TOP)
-            warn:DockMargin(0, 4, 0, 4)
-            warn:SetDark(false)
-            warn:SetTextColor(Color(220, 80, 90))
-            warn:SetFont("DermaDefaultBold")
-            warn:SetText("WARNING: your attacker IP is logged on every victim machine during a DDoS run.")
-            warn:SizeToContents()
-            local p = MH.OS.State.player or {}
-            local certLvl = tonumber(p.cert_level or 0) or 0
-            if certLvl < 4 then
-                label(body, "Requires DDoS Security (cert 4). Current level: " .. certLvl .. " / 5."):Dock(TOP)
+
+            if MH.OS.CollectShowingResult then
+                local wrap = vgui.Create("DPanel", body)
+                wrap:Dock(TOP)
+                wrap:SetTall(220)
+                render_collect_info(wrap, true)
                 return
             end
-            local virusCount = 0
+
+            local cols = vgui.Create("DPanel", body)
+            cols:Dock(TOP)
+            cols:SetTall(220)
+            cols.Paint = function() end
+
+            local leftBox = vgui.Create("DPanel", cols)
+            leftBox:Dock(FILL)
+            leftBox:DockMargin(0, 0, 8, 0)
+            render_collect_info(leftBox, false)
+
+            local rightBox = vgui.Create("DPanel", cols)
+            rightBox:Dock(RIGHT)
+            rightBox:SetWide(300)
+            local rHead = vgui.Create("DPanel", rightBox)
+            rHead:Dock(TOP)
+            rHead:SetTall(28)
+            local rIconMat = Material("icon16/money.png")
+            local rIcon = vgui.Create("DPanel", rHead)
+            rIcon:Dock(LEFT)
+            rIcon:SetWide(32)
+            rIcon.Paint = function(self, w, hgt)
+                surface.SetDrawColor(255, 255, 255, 255)
+                surface.SetMaterial(rIconMat)
+                surface.DrawTexturedRect(math.floor((w - 16) / 2), math.floor((hgt - 16) / 2), 16, 16)
+            end
+            local rLbl = vgui.Create("DLabel", rHead)
+            rLbl:Dock(FILL)
+            rLbl:SetFont("DermaDefaultBold")
+            rLbl:SetDark(true)
+            rLbl:SetText("Collect virus money")
+            local rBody = vgui.Create("DPanel", rightBox)
+            rBody:Dock(FILL)
+            rBody:DockPadding(14, 14, 14, 14)
+            local accRow = vgui.Create("DPanel", rBody)
+            accRow:Dock(TOP)
+            accRow:SetTall(28)
+            accRow.Paint = function() end
+            local accLbl = vgui.Create("DLabel", accRow)
+            accLbl:Dock(LEFT)
+            accLbl:SetWide(60)
+            accLbl:DockMargin(0, 6, 4, 0)
+            accLbl:SetDark(true)
+            accLbl:SetText("Account:")
+            local accCombo = vgui.Create("DComboBox", accRow)
+            accCombo:Dock(FILL)
+            local banks = MH.OS.State.banks or {}
+            local pickedAcc
+            for i, b in ipairs(banks) do
+                local label = "#" .. tostring(b.acc_num) .. " ($" .. tostring(tonumber(b.cash or 0)) .. ")"
+                accCombo:AddChoice(label, tostring(b.acc_num), i == 1)
+                if i == 1 then pickedAcc = tostring(b.acc_num) end
+            end
+            accCombo.OnSelect = function(_, _, _, data) pickedAcc = data end
+            if #banks == 0 then
+                accCombo:SetValue("No bank account")
+                accCombo:SetEnabled(false)
+            end
+            local btnWrap = vgui.Create("DPanel", rBody)
+            btnWrap:Dock(TOP)
+            btnWrap:SetTall(60)
+            btnWrap:DockMargin(0, 20, 0, 0)
+            btnWrap.Paint = function() end
+            local collectBtn = vgui.Create("DButton", btnWrap)
+            collectBtn:Dock(FILL)
+            collectBtn:SetText("Collect my money!")
+            collectBtn:SetTextColor(color_white)
+            collectBtn.Paint = function(self, w, hgt)
+                local col = self:IsHovered() and Color(90, 170, 80) or Color(100, 180, 90)
+                surface.SetDrawColor(col.r, col.g, col.b, 255)
+                surface.DrawRect(0, 0, w, hgt)
+            end
+            collectBtn.DoClick = function()
+                local viruses = MH.OS.State.installed_viruses or {}
+                if #viruses == 0 then
+                    MH.OS.ShowNotify("warn", "No viruses installed to collect from")
+                    return
+                end
+                send_cmd("virus_collect", { account = pickedAcc })
+                MH.OS.CollectShowingResult = true
+                if MH.OS.Rebuild then MH.OS.Rebuild() end
+            end
+        elseif MH.OS.HackedView == "DDoS" then
+            local p = MH.OS.State.player or {}
+            local certLvl = tonumber(p.cert_level or 0) or 0
+
+            local activeDdos = {}
             for _, h in ipairs(MH.OS.State.hacked or {}) do
                 for _, s in ipairs(MH.OS.State.servers or {}) do
                     for _, inv in ipairs(s.software or {}) do
                         if tonumber(inv.soft_type) == 10 and tonumber(inv.installed) == 1
                             and tonumber(inv.server_id) == tonumber(h.target_server)
-                        then virusCount = virusCount + 1 end
+                        then
+                            table.insert(activeDdos, {
+                                host_ip = tostring(h.ip or "?"),
+                                host_name = tostring(h.target_name or ""),
+                                version = tonumber(inv.soft_version) or 0,
+                            })
+                        end
                     end
                 end
             end
-            label(body, "Active DDoS viruses: " .. virusCount .. " / 3 required"):Dock(TOP)
-            if virusCount < 3 then
-                return
+
+            local cols = vgui.Create("DPanel", body)
+            cols:Dock(TOP)
+            cols:SetTall(260)
+            cols.Paint = function() end
+
+            local leftBox = vgui.Create("DPanel", cols)
+            leftBox:Dock(FILL)
+            leftBox:DockMargin(0, 0, 8, 0)
+            local lHead = vgui.Create("DPanel", leftBox)
+            lHead:Dock(TOP)
+            lHead:SetTall(28)
+            local lIconMat = Material("icon16/bomb.png")
+            local lIcon = vgui.Create("DPanel", lHead)
+            lIcon:Dock(LEFT)
+            lIcon:SetWide(32)
+            lIcon.Paint = function(self, w, hgt)
+                surface.SetDrawColor(255, 255, 255, 255)
+                surface.SetMaterial(lIconMat)
+                surface.DrawTexturedRect(math.floor((w - 16) / 2), math.floor((hgt - 16) / 2), 16, 16)
             end
-            local row = vgui.Create("DPanel", body)
-            row:Dock(TOP)
-            row:SetTall(32)
-            row:DockMargin(0, 8, 0, 0)
-            local entry = vgui.Create("DTextEntry", row)
-            entry:Dock(FILL)
-            entry:SetPlaceholderText("Target IP")
-            local launchB = vgui.Create("DButton", row)
-            launchB:SetText("Launch")
-            launchB:Dock(RIGHT)
-            launchB:SetWide(100)
-            launchB:DockMargin(4, 0, 0, 0)
-            launchB.DoClick = function()
-                send_cmd("ddos_launch", { ip = entry:GetValue() })
+            local lLbl = vgui.Create("DLabel", lHead)
+            lLbl:Dock(FILL)
+            lLbl:SetFont("DermaDefaultBold")
+            lLbl:SetDark(true)
+            lLbl:SetText("Launch DDoS attack")
+
+            local lBody = vgui.Create("DPanel", leftBox)
+            lBody:Dock(FILL)
+            lBody:DockPadding(14, 10, 14, 10)
+
+            local warn = vgui.Create("DPanel", lBody)
+            warn:Dock(TOP)
+            warn:SetTall(28)
+            warn.Paint = function(self, w, hgt)
+                surface.SetDrawColor(250, 230, 230, 255)
+                surface.DrawRect(0, 0, w, hgt)
+                surface.SetDrawColor(230, 200, 200, 255)
+                surface.DrawOutlinedRect(0, 0, w, hgt)
+                draw.SimpleText("Atention:", "DermaDefaultBold", 10, hgt / 2,
+                    Color(200, 60, 60), TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
+                surface.SetFont("DermaDefaultBold")
+                local aw = select(1, surface.GetTextSize("Atention: "))
+                draw.SimpleText("Your IP will be logged on ", "DermaDefault", 10 + aw, hgt / 2,
+                    Color(200, 60, 60), TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
+                surface.SetFont("DermaDefault")
+                local x = 10 + aw + select(1, surface.GetTextSize("Your IP will be logged on "))
+                draw.SimpleText("all", "DermaDefaultBold", x, hgt / 2,
+                    Color(200, 60, 60), TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
+                surface.SetFont("DermaDefaultBold")
+                x = x + select(1, surface.GetTextSize("all"))
+                draw.SimpleText(" servers used to DDoS.", "DermaDefault", x, hgt / 2,
+                    Color(200, 60, 60), TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
+            end
+
+            if certLvl < 4 then
+                local l = vgui.Create("DLabel", lBody)
+                l:Dock(TOP)
+                l:DockMargin(0, 14, 0, 0)
+                l:SetDark(true)
+                l:SetText("Requires DDoS Security (cert 4). Current level: " .. certLvl .. " / 5.")
+            elseif #activeDdos < 3 then
+                local l = vgui.Create("DLabel", lBody)
+                l:Dock(TOP)
+                l:DockMargin(0, 14, 0, 0)
+                l:SetDark(true)
+                l:SetText("You must have at least 3 DDoS virus running to perform an attack.")
+            else
+                local info = vgui.Create("DLabel", lBody)
+                info:Dock(TOP)
+                info:DockMargin(0, 14, 0, 6)
+                info:SetDark(true)
+                info:SetText("Active DDoS viruses: " .. #activeDdos .. " / 3 required.")
+                local row = vgui.Create("DPanel", lBody)
+                row:Dock(TOP)
+                row:SetTall(32)
+                row:DockMargin(0, 6, 0, 0)
+                row.Paint = function() end
+                local entry = vgui.Create("DTextEntry", row)
+                entry:Dock(FILL)
+                entry:SetPlaceholderText("Target IP")
+                local launchB = vgui.Create("DButton", row)
+                launchB:SetText("Launch")
+                launchB:Dock(RIGHT)
+                launchB:SetWide(100)
+                launchB:DockMargin(4, 0, 0, 0)
+                launchB.DoClick = function()
+                    send_cmd("ddos_launch", { ip = entry:GetValue() })
+                end
+            end
+
+            local rightBox = vgui.Create("DPanel", cols)
+            rightBox:Dock(RIGHT)
+            rightBox:SetWide(340)
+            local rHead = vgui.Create("DPanel", rightBox)
+            rHead:Dock(TOP)
+            rHead:SetTall(28)
+            local rIconMat = Material("icon16/server_connect.png")
+            local rIcon = vgui.Create("DPanel", rHead)
+            rIcon:Dock(LEFT)
+            rIcon:SetWide(32)
+            rIcon.Paint = function(self, w, hgt)
+                surface.SetDrawColor(255, 255, 255, 255)
+                surface.SetMaterial(rIconMat)
+                surface.DrawTexturedRect(math.floor((w - 16) / 2), math.floor((hgt - 16) / 2), 16, 16)
+            end
+            local rLbl = vgui.Create("DLabel", rHead)
+            rLbl:Dock(FILL)
+            rLbl:SetFont("DermaDefaultBold")
+            rLbl:SetDark(true)
+            rLbl:SetText("Running DDoS viruses")
+            local badge = vgui.Create("DPanel", rHead)
+            badge:Dock(RIGHT)
+            badge:SetWide(32)
+            badge:DockMargin(0, 2, 2, 2)
+            badge.Paint = function(self, w, hgt)
+                surface.SetDrawColor(58, 135, 173, 255)
+                surface.DrawRect(0, 0, w, hgt)
+                draw.SimpleText(tostring(#activeDdos), "DermaDefaultBold", w / 2, hgt / 2,
+                    color_white, TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
+            end
+
+            local rBody = vgui.Create("DPanel", rightBox)
+            rBody:Dock(FILL)
+            rBody:DockPadding(14, 10, 14, 10)
+            if #activeDdos == 0 then
+                local l = vgui.Create("DLabel", rBody)
+                l:Dock(TOP)
+                l:SetTall(22)
+                l:SetDark(true)
+                l:SetText("You havent installed any DDoS Virus yet.")
+            else
+                for _, d in ipairs(activeDdos) do
+                    local l = vgui.Create("DLabel", rBody)
+                    l:Dock(TOP)
+                    l:SetTall(18)
+                    l:SetDark(true)
+                    l:SetText(d.host_ip .. "   v" .. MH.Data.DotVersion(d.version))
+                end
             end
         end
     end
 
-    for _, name in ipairs({ "IP List", "Bank Accounts", "Collect", "DDoS" }) do
+    local HD_ICONS = {
+        ["IP List"]       = "icon16/computer.png",
+        ["Bank Accounts"] = "icon16/user_suit.png",
+        ["Collect money"] = "icon16/money.png",
+        ["DDoS"]          = "icon16/bomb.png",
+    }
+    for _, name in ipairs({ "IP List", "Bank Accounts", "Collect money", "DDoS" }) do
         local b = vgui.Create("DButton", subbar)
         b:SetText(name)
         b:Dock(LEFT)
-        b:SetWide(130)
+        b:SetWide(150)
         b:DockMargin(0, 0, 4, 0)
-        b.DoClick = function() MH.OS.HackedView = name paint() end
+        b.DoClick = function()
+            MH.OS.HackedView = name == "Collect money" and "Collect" or name
+            MH.OS.CollectShowingResult = false
+            paint()
+        end
+        if HD_ICONS[name] then
+            local iconMat = Material(HD_ICONS[name])
+            surface.SetFont("DermaDefault")
+            local textW = select(1, surface.GetTextSize(name))
+            local iconW, gap = 16, 8
+            b:SetContentAlignment(6)
+            b:SetTextInset(math.floor((150 - (iconW + gap + textW)) / 2), 0)
+            b.PaintOver = function(self, w, h)
+                local x = math.floor((w - (iconW + gap + textW)) / 2)
+                local y = math.floor((h - iconW) / 2)
+                surface.SetDrawColor(255, 255, 255, 255)
+                surface.SetMaterial(iconMat)
+                surface.DrawTexturedRect(x, y, iconW, iconW)
+            end
+        end
     end
 
     paint()
@@ -3070,7 +5058,7 @@ local MISSION_TITLES = {
 
 Tabs["Missions"] = function(container)
     clear(container)
-    label(container, "Missions", "DermaLarge"):Dock(TOP)
+    tab_header(container, "Missions", current_server())
 
     local subbar = vgui.Create("DPanel", container)
     subbar:Dock(TOP)
@@ -3181,7 +5169,7 @@ Tabs["Missions"] = function(container)
                 title = MISSION_TITLES[tonumber(m.mtype)] or ("#" .. tostring(m.mtype))
                 giver = tostring(m.hirer_name or "Employers")
                 targetTxt = tostring(m.target_name or "?") .. "  " .. tostring(m.target_ip or "")
-                prizeTxt = "$" .. tostring(m.prize)
+                prizeTxt = "$" .. fmt_cash(m.prize)
                 diffTxt = difficulty_for(m.prize)
                 statusTxt = MISSION_STATUS_TXT[tonumber(m.status)] or tostring(m.status)
             end
@@ -3249,6 +5237,10 @@ Tabs["Missions"] = function(container)
         end
     end
 
+    local MISSION_ICONS = {
+        ["Active"]    = "icon16/package.png",
+        ["Completed"] = "icon16/package_green.png",
+    }
     for _, name in ipairs({ "Active", "Completed" }) do
         local b = vgui.Create("DButton", subbar)
         b:SetText(name)
@@ -3256,6 +5248,21 @@ Tabs["Missions"] = function(container)
         b:SetWide(110)
         b:DockMargin(0, 0, 4, 0)
         b.DoClick = function() MH.OS.MissionView = name paint() end
+        if MISSION_ICONS[name] then
+            local iconMat = Material(MISSION_ICONS[name])
+            surface.SetFont("DermaDefault")
+            local textW = select(1, surface.GetTextSize(name))
+            local iconW, gap = 16, 8
+            b:SetContentAlignment(6)
+            b:SetTextInset(math.floor((110 - (iconW + gap + textW)) / 2), 0)
+            b.PaintOver = function(self, w, h)
+                local x = math.floor((w - (iconW + gap + textW)) / 2)
+                local y = math.floor((h - iconW) / 2)
+                surface.SetDrawColor(255, 255, 255, 255)
+                surface.SetMaterial(iconMat)
+                surface.DrawTexturedRect(x, y, iconW, iconW)
+            end
+        end
     end
 
     paint()
@@ -3316,13 +5323,18 @@ end
 
 Tabs["Mail"] = function(container)
     clear(container)
-    label(container, "Mail", "DermaLarge"):Dock(TOP)
+    tab_header(container, "Mail", current_server())
 
     local subbar = vgui.Create("DPanel", container)
     subbar:Dock(TOP)
     subbar:SetTall(28)
     subbar:DockMargin(0, 2, 0, 6)
 
+    local MAIL_ICONS = {
+        ["Inbox"]   = "icon16/email_open.png",
+        ["Outbox"]  = "icon16/email_go.png",
+        ["Compose"] = "icon16/email_edit.png",
+    }
     for _, name in ipairs({ "Inbox", "Outbox", "Compose" }) do
         local b = vgui.Create("DButton", subbar)
         b:SetText(name)
@@ -3332,6 +5344,21 @@ Tabs["Mail"] = function(container)
         b.DoClick = function()
             MH.OS.MailView = name
             if MH.OS.Rebuild then MH.OS.Rebuild() end
+        end
+        if MAIL_ICONS[name] then
+            local iconMat = Material(MAIL_ICONS[name])
+            surface.SetFont("DermaDefault")
+            local textW = select(1, surface.GetTextSize(name))
+            local iconW, gap = 16, 8
+            b:SetContentAlignment(6)
+            b:SetTextInset(math.floor((100 - (iconW + gap + textW)) / 2), 0)
+            b.PaintOver = function(self, w, h)
+                local x = math.floor((w - (iconW + gap + textW)) / 2)
+                local y = math.floor((h - iconW) / 2)
+                surface.SetDrawColor(255, 255, 255, 255)
+                surface.SetMaterial(iconMat)
+                surface.DrawTexturedRect(x, y, iconW, iconW)
+            end
         end
     end
 
@@ -3517,19 +5544,86 @@ Tabs["Mail"] = function(container)
         bodyEntry:SetTall(280)
         bodyEntry:SetMultiline(true)
         bodyEntry:SetValue(initial.body or "")
+        local captchaWrap = vgui.Create("DPanel", container)
+        captchaWrap:Dock(TOP)
+        captchaWrap:SetTall(80)
+        captchaWrap:DockMargin(0, 8, 0, 0)
+        local captchaPrompt = vgui.Create("DLabel", captchaWrap)
+        captchaPrompt:Dock(TOP)
+        captchaPrompt:SetTall(20)
+        captchaPrompt:DockMargin(10, 8, 10, 0)
+        captchaPrompt:SetDark(true)
+        captchaPrompt:SetFont("DermaDefaultBold")
+        captchaPrompt:SetContentAlignment(5)
+        captchaPrompt:SetText("Loading captcha...")
+        local captchaRow = vgui.Create("DPanel", captchaWrap)
+        captchaRow:Dock(TOP)
+        captchaRow:SetTall(44)
+        captchaRow:DockMargin(10, 6, 10, 0)
+        captchaRow.Paint = function() end
+        local tileBtns = {}
+        for i = 1, 4 do
+            local b = vgui.Create("DButton", captchaRow)
+            b:SetText("")
+            b:SetSize(44, 40)
+            b.Paint = function(self, w, h)
+                derma.SkinHook("Paint", "Button", self, w, h)
+                local pick = MH.OS.MailCaptcha and MH.OS.MailCaptcha.choices[i]
+                if pick then
+                    local mat = Material("icon16/" .. pick .. ".png")
+                    surface.SetDrawColor(255, 255, 255, 255)
+                    surface.SetMaterial(mat)
+                    surface.DrawTexturedRect(math.floor((w - 16) / 2), math.floor((h - 16) / 2), 16, 16)
+                end
+                if MH.OS.MailCaptcha and MH.OS.MailCaptcha.choice == i then
+                    surface.SetDrawColor(70, 160, 195, 255)
+                    surface.DrawOutlinedRect(0, 0, w, h)
+                    surface.DrawOutlinedRect(1, 1, w - 2, h - 2)
+                end
+            end
+            b.DoClick = function()
+                if not MH.OS.MailCaptcha then return end
+                MH.OS.MailCaptcha.choice = i
+            end
+            tileBtns[i] = b
+        end
+        captchaRow.PerformLayout = function(self, w, h)
+            local total = 44 * 4 + 10 * 3
+            local x = math.max(0, math.floor((w - total) / 2))
+            for i, b in ipairs(tileBtns) do
+                b:SetPos(x + (i - 1) * (44 + 10), math.floor((h - 40) / 2))
+            end
+        end
+        MH.OS.MailCaptcha = nil
+        MH.OS.OnMailCaptcha = function(challenge)
+            MH.OS.MailCaptcha = challenge
+            if IsValid(captchaPrompt) then
+                captchaPrompt:SetText("Click on " .. tostring(challenge.prompt or ""))
+                captchaPrompt:SizeToContents()
+            end
+        end
+        send_cmd("mail_captcha_request", {})
+
         local sendB = vgui.Create("DButton", container)
         sendB:Dock(TOP)
         sendB:SetTall(32)
         sendB:DockMargin(0, 8, 0, 0)
         sendB:SetText("Send")
         sendB.DoClick = function()
+            local ch = MH.OS.MailCaptcha
+            if not ch or not ch.choice then
+                MH.OS.ShowNotify("warn", "Solve the captcha before sending")
+                return
+            end
             send_cmd("mail_send", {
                 to = toEntry:GetValue(),
                 subject = subEntry:GetValue(),
                 body = bodyEntry:GetValue(),
+                captcha_token = ch.token,
+                captcha_choice = ch.choice,
             })
-            MH.OS.MailView = "Outbox"
-            if MH.OS.Rebuild then MH.OS.Rebuild() end
+            MH.OS.MailCaptcha = nil
+            send_cmd("mail_captcha_request", {})
         end
         end
 end
@@ -3539,15 +5633,15 @@ local ADMIN_ONLY_TABS = { Admin = true }
 
 Tabs["Ranking"] = function(container)
     clear(container)
-    label(container, "Hall of Fame", "DermaLarge"):Dock(TOP)
+    tab_header(container, "Hall of Fame", current_server())
 
     local CATEGORIES = {
         { key = "reputation", title = "Reputation",     valueFmt = function(v) return tostring(math.floor(v)) end },
         { key = "hacks",      title = "Hacks",          valueFmt = function(v) return tostring(math.floor(v)) end },
         { key = "software",   title = "Software",       software = true },
-        { key = "money",      title = "Money earned",   valueFmt = function(v) return "$" .. math.floor(v) end },
-        { key = "transfers",  title = "Money moved",    valueFmt = function(v) return "$" .. math.floor(v) end },
-        { key = "wealth",     title = "Current wealth", valueFmt = function(v) return "$" .. math.floor(v) end },
+        { key = "money",      title = "Money earned",   valueFmt = function(v) return "$" .. fmt_cash(v) end },
+        { key = "transfers",  title = "Money moved",    valueFmt = function(v) return "$" .. fmt_cash(v) end },
+        { key = "wealth",     title = "Current wealth", valueFmt = function(v) return "$" .. fmt_cash(v) end },
         { key = "bitcoin",    title = "Bitcoin",        valueFmt = function(v) return string.format("%.4f BTC", v) end },
         { key = "viruses",    title = "Viruses planted",valueFmt = function(v) return tostring(math.floor(v)) end },
         { key = "ddos",       title = "DDoS runs",      valueFmt = function(v) return tostring(math.floor(v)) end },
@@ -3610,7 +5704,7 @@ end
 
 Tabs["Settings"] = function(container)
     clear(container)
-    label(container, "Settings", "DermaLarge"):Dock(TOP)
+    tab_header(container, "Settings", current_server())
     local reconnectB = vgui.Create("DButton", container)
     reconnectB:SetText("Refresh")
     reconnectB:Dock(TOP)
@@ -3630,11 +5724,11 @@ end
 Tabs["Admin"] = function(container)
     clear(container)
     if not MH.OS.State.is_admin then
-        label(container, "Admin", "DermaLarge"):Dock(TOP)
+        tab_header(container, "Admin", current_server())
         label(container, "You are not an administrator."):Dock(TOP)
         return
     end
-    label(container, "Admin", "DermaLarge"):Dock(TOP)
+    tab_header(container, "Admin", current_server())
     label(container, "Ban a player (SteamID64 or online player). Banned users cannot interact with Metahacker."):Dock(TOP)
 
     local pickerRow = vgui.Create("DPanel", container)
@@ -3855,25 +5949,6 @@ local function build_frame()
     f:MakePopup()
     MH.OS.Frame = f
 
-    local statusBar = vgui.Create("DPanel", f)
-    statusBar:Dock(TOP)
-    statusBar:DockMargin(4, 4, 4, 0)
-    statusBar:SetTall(22)
-    local statusLbl = vgui.Create("DLabel", statusBar)
-    statusLbl:Dock(FILL)
-    statusLbl:DockMargin(0, 0, 10, 0)
-    statusLbl:SetContentAlignment(6)
-    statusLbl:SetDark(true)
-    statusLbl.Think = function(self)
-        local p = MH.OS.State.player or {}
-        local baseline = tonumber(MH.OS.State.client_baseline or CurTime()) or CurTime()
-        local serverNow = (tonumber(MH.OS.State.server_now) or os.time()) + (CurTime() - baseline)
-        local clock = os.date("%H:%M:%S", math.floor(serverNow))
-        self:SetText(clock ..
-            "   BTC " .. string.format("%.4f", tonumber(p.bitcoin or 0)) ..
-            "   Rep " .. tostring(tonumber(p.exp or 0)))
-    end
-
     local body = vgui.Create("DPanel", f)
     body:Dock(FILL)
     body:DockMargin(4, 4, 4, 4)
@@ -3881,11 +5956,7 @@ local function build_frame()
     local sidebar = vgui.Create("DPanel", body)
     sidebar:Dock(LEFT)
     sidebar:SetWide(170)
-
-    local serverBar = vgui.Create("DPanel", body)
-    serverBar:Dock(TOP)
-    serverBar:DockMargin(6, 0, 0, 0)
-    serverBar:SetTall(32)
+    sidebar:DockMargin(0, 70, 0, 0)
 
     local content = vgui.Create("DScrollPanel", body)
     content:Dock(FILL)
@@ -3914,11 +5985,28 @@ local function build_frame()
     local function switch_tab(name)
         save_scroll()
         MH.OS.ActiveTab = name
+        MH.OS.LastTab = name
         local fn = Tabs[name]
         if fn then fn(content) end
         restore_scroll(name)
     end
 
+    local SIDEBAR_ICONS = {
+        ["Home"]            = "icon16/house.png",
+        ["Task Manager"]    = "icon16/chart_bar.png",
+        ["Software"]        = "icon16/folder.png",
+        ["Internet"]        = "icon16/world.png",
+        ["Log File"]        = "icon16/book.png",
+        ["Hardware"]        = "icon16/monitor.png",
+        ["University"]      = "icon16/building.png",
+        ["Finances"]        = "icon16/money.png",
+        ["Hacked Database"] = "icon16/database.png",
+        ["Missions"]        = "icon16/group.png",
+        ["Mail"]            = "icon16/email.png",
+        ["Ranking"]         = "icon16/award_star_gold_1.png",
+        ["Settings"]        = "icon16/cog.png",
+        ["Admin"]           = "icon16/user_red.png",
+    }
     for _, name in ipairs(TAB_ORDER) do
         if ADMIN_ONLY_TABS[name] and not MH.OS.State.is_admin then continue end
         local b = vgui.Create("DButton", sidebar)
@@ -3929,6 +6017,16 @@ local function build_frame()
         b.DoClick = function()
             MH.OS.WatchProcess = nil
             switch_tab(name)
+        end
+        if SIDEBAR_ICONS[name] then
+            local iconMat = Material(SIDEBAR_ICONS[name])
+            b:SetContentAlignment(4)
+            b:SetTextInset(28, 0)
+            b.PaintOver = function(self, w, h)
+                surface.SetDrawColor(255, 255, 255, 255)
+                surface.SetMaterial(iconMat)
+                surface.DrawTexturedRect(6, math.floor((h - 16) / 2), 16, 16)
+            end
         end
         if name == "Mail" then
             b.Think = function(self)
@@ -3942,31 +6040,16 @@ local function build_frame()
         end
     end
 
-    local function rebuild_serverbar()
-        serverBar:Clear()
-        for _, s in ipairs(MH.OS.State.servers or {}) do
-            local sb = vgui.Create("DButton", serverBar)
-            sb:SetText(s.name .. " (" .. (s.ip or "?") .. ")")
-            sb:Dock(LEFT)
-            sb:DockMargin(4, 4, 0, 4)
-            sb:SetWide(200)
-            sb.DoClick = function()
-                MH.OS.FocusServer = tonumber(s.id)
-                switch_tab(MH.OS.ActiveTab or "Home")
-            end
-        end
-    end
-
     MH.OS.Rebuild = function()
-        rebuild_serverbar()
         local tab = MH.OS.ActiveTab or "Home"
         local fn = Tabs[tab]
         if fn then fn(content) end
         restore_scroll(tab)
     end
 
-    rebuild_serverbar()
-    switch_tab("Home")
+    local resumeTab = MH.OS.LastTab or "Home"
+    if not Tabs[resumeTab] then resumeTab = "Home" end
+    switch_tab(resumeTab)
 end
 MH.OS.Build = build_frame
 
@@ -4028,6 +6111,23 @@ net.Receive(N.Notify, function()
         MH.OS.PendingWatch = nil
     end
     MH.OS.ShowNotify(kind, msg)
+end)
+
+net.Receive(N.MailCaptcha, function()
+    local token = net.ReadString()
+    local prompt = net.ReadString()
+    local count = net.ReadUInt(8)
+    local choices = {}
+    for i = 1, count do choices[i] = net.ReadString() end
+    local challenge = { token = token, prompt = prompt, choices = choices, choice = nil }
+    if MH.OS.OnMailCaptcha then MH.OS.OnMailCaptcha(challenge) end
+end)
+
+net.Receive(N.PuzzleToken, function()
+    local pid = net.ReadUInt(16)
+    local token = net.ReadString()
+    MH.OS.PuzzleTokens = MH.OS.PuzzleTokens or {}
+    MH.OS.PuzzleTokens[pid] = token
 end)
 
 net.Receive(N.OpenOS, function()

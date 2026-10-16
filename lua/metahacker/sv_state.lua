@@ -157,17 +157,46 @@ function MH.State.SendCertServiceIntro(sid, level)
     end
 end
 
+function MH.State.SendTutorialDoomMail(sid)
+    local nick = MH.DB.QueryValue("SELECT nick FROM mh_players WHERE sid64 = " .. MH.DB.Esc(sid)) or "operator"
+    local body =
+        "Hello " .. nick .. ",\n\n" ..
+        "My employers authorize me to nudge things in a particular direction from time to time.\n\n" ..
+        "You might have heard of the recent leak of former MSA employee Gordon Freeman, right? Well, the gentleman claims the MSA holds an extraordinary virus that spreads through the network with remarkable ease.\n\n" ..
+        "The Doom Virus, as it has been designated, was the result of a strictly forbidden experiment from Black Mesa. This virus, if correctly configured, can hold the entire Internet hostage from a single server. He also stated that the MSA uses a fork of this virus to spy on every user in the world.\n\n" ..
+        "Funny story, everyone is blaming the MSA for spying, but no one sees the potential of the original Doom Virus.\n\n" ..
+        "Well, I believe you understand why we hired you now. No one was able to hack the MSA, until now.\n\n" ..
+        "Keep researching your software, and good luck on your duty. You are not the only one after the virus.\n\n" ..
+        "The right person in the wrong place can make all the difference in the world."
+    MH.State.SendSystemMailOnce(sid, "Employers", "Doom the world!", body)
+end
+
 function MH.State.CheckEmployersFirstJob(sid)
     local p = MH.State.GetPlayer(sid)
     if not p then return end
     if (tonumber(p.cert_level or 0) or 0) < 1 then return end
     local subject = "Your first job"
+    local stale = MH.DB.QueryRow(
+        "SELECT m.id FROM mh_missions m INNER JOIN mh_servers s ON s.id = m.target_server " ..
+        "WHERE m.assigned_sid = " .. MH.DB.Esc(sid) .. " AND m.mtype = 1 AND m.status IN (0, 1) " ..
+        "AND (SELECT COALESCE(MAX(sw.soft_version), 0) FROM mh_software sw " ..
+            "WHERE sw.server_id = s.id AND sw.soft_type = 2) > 10 " ..
+        "LIMIT 1")
+    if stale then
+        MH.DB.Query("DELETE FROM mh_missions WHERE id = " .. tonumber(stale.id))
+        MH.DB.Query("DELETE FROM mh_mail WHERE to_sid = " .. MH.DB.Esc(sid) ..
+            " AND from_sid = 'Employers' AND subject = " .. MH.DB.Esc(subject))
+    end
     if MH.State.HasReceivedSystemMail(sid, "Employers", subject) then return end
     local target = MH.DB.QueryRow(
-        "SELECT id, ip, name FROM mh_servers WHERE is_npc = 1 " ..
-        "AND LOWER(name) NOT LIKE '%bank%' " ..
+        "SELECT s.id, s.ip, s.name, " ..
+        "(SELECT COALESCE(MAX(sw.soft_version), 0) FROM mh_software sw " ..
+            "WHERE sw.server_id = s.id AND sw.soft_type = 2) AS hv " ..
+        "FROM mh_servers s " ..
+        "WHERE s.is_npc = 1 " ..
+        "AND LOWER(s.name) NOT LIKE '%bank%' " ..
         "AND " .. MH.State.MissionTargetExcludeSQL() .. " " ..
-        "ORDER BY RANDOM() LIMIT 1")
+        "ORDER BY hv ASC, RANDOM() LIMIT 1")
     if not target then return end
     local briefing =
         "Your very first contract. The target is " .. target.ip .. " (" .. target.name .. ").\n\n" ..
@@ -293,6 +322,26 @@ function MH.State.MarkDiscovered(sid, serverId)
         MH.DB.Esc(sid) .. ", " .. serverId .. ", " .. now() .. ")")
 end
 
+local function gen_btc_address()
+    local chars = "abcdefghijklmnopqrstuvwxyz0123456789ABCDEFGHJKLMNPQRSTUVWXYZ"
+    local out = { "1" }
+    for _ = 1, 33 do
+        local idx = math.random(1, #chars)
+        out[#out + 1] = chars:sub(idx, idx)
+    end
+    return table.concat(out)
+end
+
+local function gen_priv_key()
+    local chars = "abcdefghijklmnopqrstuvwxyz0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+    local out = {}
+    for _ = 1, 64 do
+        local idx = math.random(1, #chars)
+        out[#out + 1] = chars:sub(idx, idx)
+    end
+    return table.concat(out)
+end
+
 function MH.State.EnsureWelcomeMail(sid, nick)
     local existing = MH.DB.QueryValue(
         "SELECT id FROM mh_mail WHERE to_sid = " .. MH.DB.Esc(sid) ..
@@ -303,17 +352,21 @@ function MH.State.EnsureWelcomeMail(sid, nick)
         MH.DB.Esc(build_welcome_body(nick)) .. ", " .. now() .. ", 0)")
     MH.DB.Query("UPDATE mh_players SET bitcoin = bitcoin + " .. WELCOME_BTC_GIFT ..
         " WHERE sid64 = " .. MH.DB.Esc(sid))
-    MH.Log.info("state", "welcome_mail", "Sent welcome to " .. sid)
-end
-
-local function gen_btc_address()
-    local chars = "abcdefghijklmnopqrstuvwxyz0123456789ABCDEFGHJKLMNPQRSTUVWXYZ"
-    local out = { "1" }
-    for _ = 1, 33 do
-        local idx = math.random(1, #chars)
-        out[#out + 1] = chars:sub(idx, idx)
+    local address = MH.DB.QueryValue(
+        "SELECT btc_address FROM mh_players WHERE sid64 = " .. MH.DB.Esc(sid))
+    if not address or address == "" or address == "NULL" then
+        address = gen_btc_address()
+        MH.DB.Query("UPDATE mh_players SET btc_address = " .. MH.DB.Esc(address) ..
+            " WHERE sid64 = " .. MH.DB.Esc(sid))
     end
-    return table.concat(out)
+    local walletExists = MH.DB.QueryValue(
+        "SELECT 1 FROM mh_btc_wallets WHERE owner_sid = " .. MH.DB.Esc(sid))
+    if not walletExists then
+        MH.DB.Query("INSERT INTO mh_btc_wallets (address, owner_sid, owner_server, priv_key, amount, created) VALUES (" ..
+            MH.DB.Esc(address) .. ", " .. MH.DB.Esc(sid) .. ", 0, " ..
+            MH.DB.Esc(gen_priv_key()) .. ", " .. WELCOME_BTC_GIFT .. ", " .. now() .. ")")
+    end
+    MH.Log.info("state", "welcome_mail", "Sent welcome to " .. sid)
 end
 
 function MH.State.EnsurePlayer(ply)
@@ -521,7 +574,7 @@ local SPECIAL_NPCS = {
     { key = "DIRECTORY",  name = "First Whois",    cpu_tier = 7,  ram_tier = 4, hdd_tier = 6, net_tier = 5, fixed_ip = "1.1.1.1", hasher_v = 20,  firewall_v = 20 },
     { key = "WHOIS2",     name = "Second Whois",   cpu_tier = 8,  ram_tier = 4, hdd_tier = 6, net_tier = 5, hasher_v = 50,  firewall_v = 36 },
     { key = "WHOIS3",     name = "Third Whois",    cpu_tier = 8,  ram_tier = 4, hdd_tier = 6, net_tier = 6, hasher_v = 75,  firewall_v = 50 },
-    { key = "WHOIS4",     name = "Fourth Whois",   cpu_tier = 9,  ram_tier = 4, hdd_tier = 6, net_tier = 6, hasher_v = 100, firewall_v = 70 },
+    { key = "WHOIS4",     name = "Fourth Whois",   cpu_tier = 9,  ram_tier = 4, hdd_tier = 6, net_tier = 7, hasher_v = 100, firewall_v = 70 },
     { key = "EMPLOYERS",  name = "Employers",      cpu_tier = 5,  ram_tier = 3, hdd_tier = 6, net_tier = 4, hasher_v = 20, firewall_v = 17 },
     { key = "MSA",        name = "MSA",            cpu_tier = 12, ram_tier = 5, hdd_tier = 7, net_tier = 10, hasher_v = 200 },
     { key = "DC",         name = "Download Center",cpu_tier = 8,  ram_tier = 4, hdd_tier = 7, net_tier = 7, hasher_v = 10,  firewall_v = 10 },
@@ -529,13 +582,13 @@ local SPECIAL_NPCS = {
     { key = "BITCOIN",    name = "Bitcoin Market", cpu_tier = 12, ram_tier = 5, hdd_tier = 7, net_tier = 10,hasher_v = 50,  firewall_v = 50 },
     { key = "SOURCENET",    name = "Sourcenet",        cpu_tier = 8,  ram_tier = 3, hdd_tier = 7, net_tier = 4, hasher_v = 50,  firewall_v = 35 },
     { key = "BANK1",      name = "First International Bank", cpu_tier = 4,  ram_tier = 4, hdd_tier = 6, net_tier = 4, hasher_v = 15,  firewall_v = 15 },
-    { key = "BANK2",      name = "HEBC Bank",                cpu_tier = 5,  ram_tier = 3, hdd_tier = 6, net_tier = 5, hasher_v = 25,  firewall_v = 25 },
+    { key = "BANK2",      name = "HEBC Bank",                cpu_tier = 5,  ram_tier = 3, hdd_tier = 6, net_tier = 4, hasher_v = 25,  firewall_v = 25 },
     { key = "BANK3",      name = "American Express Bank",    cpu_tier = 6,  ram_tier = 4, hdd_tier = 7, net_tier = 5, hasher_v = 40,  firewall_v = 40 },
     { key = "BANK4",      name = "Swiss International Bank", cpu_tier = 8,  ram_tier = 4, hdd_tier = 6, net_tier = 5, hasher_v = 60,  firewall_v = 60 },
     { key = "BANK5",      name = "Ultimate Bank",            cpu_tier = 10, ram_tier = 4, hdd_tier = 6, net_tier = 7, hasher_v = 80,  firewall_v = 80 },
     { key = "FBI",        name = "FBI",                      cpu_tier = 8,  ram_tier = 4, hdd_tier = 7, net_tier = 7, hasher_v = 100, firewall_v = 75  },
-    { key = "MD",         name = "MD",                       cpu_tier = 8,  ram_tier = 4, hdd_tier = 7, net_tier = 7, hasher_v = 100, firewall_v = 100 },
-    { key = "GOOSECORP",  name = "GooseCorp",                cpu_tier = 8,  ram_tier = 4, hdd_tier = 7, net_tier = 6, hasher_v = 100, firewall_v = 100 },
+    { key = "MD",         name = "Black Mesa",               cpu_tier = 8,  ram_tier = 4, hdd_tier = 7, net_tier = 7, hasher_v = 100, firewall_v = 100 },
+    { key = "GOOSECORP",  name = "GooseCorp",                cpu_tier = 8,  ram_tier = 4, hdd_tier = 7, net_tier = 7, hasher_v = 100, firewall_v = 100 },
     { key = "TORRENT",    name = "Torrent",                  cpu_tier = 8,  ram_tier = 4, hdd_tier = 7, net_tier = 7, hasher_v = 25,  firewall_v = 25  },
 }
 local PUZZLE_SOFT_COLS = {
@@ -734,9 +787,9 @@ local NPC_EXTRA_STOCK = {
 }
 
 local HIRER_LOADOUTS = {
-    { { 2, 14 }, { 1, 17 }, { 13, 15 }, { 4, 13 }, { 14, 11 }, { 20, 15 } },
-    { { 2, 11 }, { 1, 13 }, { 4, 12 }, { 5, 14 }, { 6, 12 }, { 8, 12 }, { 13, 11 } },
-    { { 2, 12 }, { 1, 11 }, { 4, 10 }, { 8, 20 }, { 13, 12 }, { 14, 13 }, { 3, 10 }, { 9, 10 } },
+    { { 2, 10 }, { 1, 10 }, { 13, 10 }, { 4, 10 }, { 14, 10 }, { 20, 10 } },
+    { { 2, 10 }, { 1, 10 }, { 4, 10 }, { 5, 10 }, { 6, 10 }, { 8, 10 }, { 13, 10 } },
+    { { 2, 10 }, { 1, 10 }, { 4, 10 }, { 8, 10 }, { 13, 10 }, { 14, 10 }, { 3, 10 }, { 9, 10 } },
     { { 2, 13 }, { 1, 14 }, { 4, 17 }, { 8, 12 }, { 13, 12 }, { 3, 10 }, { 9, 13 }, { 6, 12 }, { 5, 11 } },
     { { 2, 17 }, { 1, 13 }, { 4, 14 }, { 20, 20 }, { 5, 16 }, { 8, 15 } },
     { { 2, 16 }, { 1, 22 }, { 4, 19 }, { 8, 14 }, { 14, 14 }, { 3, 10 }, { 5, 18 } },
@@ -919,12 +972,15 @@ function MH.State.AntivirusNPCSweep()
     return totalWiped, #due
 end
 
+MH.State._nextSoftReset = os.time() + 900
 timer.Create("mh_restore_npc_software", 900, 0, function()
     local n = MH.State.RestoreNPCSoftware()
+    MH.State._nextSoftReset = os.time() + 900
     if (n or 0) > 0 then
         MH.Log.info("state", "restore_npc_soft", "Wiped " .. n .. " non-virus player files from NPC servers")
     end
 end)
+function MH.State.NextSoftwareReset() return MH.State._nextSoftReset or 0 end
 
 timer.Create("mh_antivirus_npc_sweep", 10800, 0, function()
     local wiped, scanned = MH.State.AntivirusNPCSweep()
@@ -1315,6 +1371,8 @@ function MH.State.SnapshotFor(ply)
                 info.hidden_hdd_mb = hiddenHddMb
                 info.hidden_ram_mb = hiddenRamMb
                 info.viewer_seeker_v = viewerSeekerV
+                info.next_hardware_reset = tonumber(target.next_av_scan or 0) or 0
+                info.next_software_reset = tonumber(MH.State.NextSoftwareReset and MH.State.NextSoftwareReset() or 0) or 0
                 info.log_text = MH.State.ReadLog(target.id)
                 info.log_locked = MH.DB.QueryValue(
                     "SELECT 1 FROM mh_processes WHERE action IN ('E_LOG','D_LOG') AND local_server = " ..
@@ -1331,7 +1389,8 @@ function MH.State.SnapshotFor(ply)
         end
     end
     local hacked = MH.DB.Query(
-        "SELECT h.id, h.target_server, h.discovered_pass, h.stamp, s.ip, s.name AS target_name " ..
+        "SELECT h.id, h.target_server, h.discovered_pass, h.stamp, s.ip, s.name AS target_name, " ..
+        "s.cpu_tier, s.ram_tier, s.hdd_tier, s.net_tier " ..
         "FROM mh_hacked h LEFT JOIN mh_servers s ON s.id = h.target_server " ..
         "WHERE h.owner_sid = " .. MH.DB.Esc(sid)) or {}
     local banks = MH.DB.Query(
@@ -1483,6 +1542,7 @@ function MH.State.SnapshotFor(ply)
         mail_unread = mail_unread,
         missions = missions,
         btc = btc,
+        btc_logged_in = (MH.BtcSessions and MH.BtcSessions[sid]) and true or false,
         internet = internet,
         bank_session = bank_sess_info,
         notifications = notifications,
@@ -1505,4 +1565,5 @@ end
 
 hook.Add("PlayerInitialSpawn", "mh_ensure_player", function(ply)
     MH.State.EnsurePlayer(ply)
+    MH.State.CheckEmployersFirstJob(ply:SteamID64())
 end)

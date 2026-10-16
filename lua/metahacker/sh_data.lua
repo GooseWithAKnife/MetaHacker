@@ -4,6 +4,23 @@ MH.Data = {}
 MH.Data.StartingCash = 100
 MH.Data.StartingServerPrice = 1000
 
+MH.Data.BtcBuyRate = 81650
+MH.Data.BtcSellRate = 81624
+
+function MH.Data.FmtCash(n)
+    n = math.floor(tonumber(n) or 0)
+    local neg = n < 0
+    local str = tostring(math.abs(n))
+    local out = ""
+    local count = 0
+    for i = #str, 1, -1 do
+        out = string.sub(str, i, i) .. out
+        count = count + 1
+        if count % 3 == 0 and i > 1 then out = "," .. out end
+    end
+    return (neg and "-" or "") .. out
+end
+
 MH.Data.Certs = {
     {
         level = 1, name = "Basic tutorial", price = 0,
@@ -144,51 +161,51 @@ MH.Data.Hardware = {
 
 MH.Data.Puzzles = {
     { id = 1,  kind = "tictactoe",   name = "Tic Tac Toe", question = "Beat the house. Play O. Win a round and the terminal unlocks." },
-    { id = 2,  kind = "qa", question = "Decode: 68 61 63 6b", answers = { "hack" }, hint = "Each pair of hex digits is one ASCII character." },
-    { id = 3,  kind = "qa", question = "SSH listens on port 22. Write that port in binary.", answers = { "10110", "0b10110", "00010110" }, hint = "22 in base 2." },
-    { id = 4,  kind = "qa", question = "What single word (four letters) is a Unix command that prints its arguments AND a sound reflected off a surface?", answers = { "echo" } },
+    { id = 2,  kind = "qa", question = "Decode: 68 61 63 6b", hint = "Each pair of hex digits is one ASCII character." },
+    { id = 3,  kind = "qa", question = "SSH listens on port 22. Write that port in binary.", hint = "22 in base 2." },
+    { id = 4,  kind = "qa", question = "What single word (four letters) is a Unix command that prints its arguments AND a sound reflected off a surface?" },
     { id = 5,  kind = "lightsout",   name = "Lights Out",  question = "Turn off every light. Clicking a cell toggles it and its four neighbors." },
-    { id = 6,  kind = "qa", question = "I move through wires but am not electricity. I carry speech but have no mouth. What am I?", answers = { "packet", "packets", "a packet" } },
-    { id = 7,  kind = "qa", question = "Two processes share the same CPU. Solo times: 30s and 20s. Running both at once with equal slices, how long before both finish?", answers = { "40", "40s", "40 seconds" }, hint = "The shorter one finishes first, then the longer runs solo for the remainder." },
-    { id = 8,  kind = "qa", question = "What is the default port for HTTPS?", answers = { "443" } },
-    { id = 9,  kind = "qa", question = "In base 10, what is 0x1F?", answers = { "31" } },
-    { id = 10, kind = "qa", question = "Convert the binary 1010 to base 10.", answers = { "10", "ten" } },
+    { id = 6,  kind = "qa", question = "I move through wires but am not electricity. I carry speech but have no mouth. What am I?" },
+    { id = 7,  kind = "qa", question = "Two processes share the same CPU. Solo times: 30s and 20s. Running both at once with equal slices, how long before both finish?", hint = "The shorter one finishes first, then the longer runs solo for the remainder." },
+    { id = 8,  kind = "qa", question = "What is the default port for HTTPS?" },
+    { id = 9,  kind = "qa", question = "In base 10, what is 0x1F?" },
+    { id = 10, kind = "qa", question = "Convert the binary 1010 to base 10." },
     { id = 11, kind = "memsequence", name = "Memory Sequence", question = "Watch the sequence and repeat it. Grow it to length 6 to clear." },
-    { id = 12, kind = "qa", question = "What is the first prime number greater than 20?", answers = { "23" } },
-    { id = 13, kind = "qa", question = "How many bytes in a 32-bit word?", answers = { "4", "four" } },
-    { id = 14, kind = "qa", question = "What port does DNS use?", answers = { "53" } },
-    { id = 15, kind = "qa", question = "The square root of 196.", answers = { "14" } },
-    { id = 16, kind = "qa", question = "Decode base64: aGFjaw==", answers = { "hack" } },
-    { id = 17, kind = "qa", question = "Hex 'DEAD' as decimal.", answers = { "57005" } },
-    { id = 18, kind = "qa", question = "A programmer walks into a bar, orders 1 beer, 2 beers, 4 beers, 8 beers... what's the next number?", answers = { "16", "sixteen" } },
-    { id = 19, kind = "qa", question = "What is 2 to the 10th power?", answers = { "1024" } },
-    { id = 20, kind = "qa", question = "What Linux file lists mounted filesystems?", answers = { "/etc/fstab", "fstab", "/proc/mounts", "mounts" } },
+    { id = 12, kind = "qa", question = "What is the first prime number greater than 20?" },
+    { id = 13, kind = "qa", question = "How many bytes in a 32-bit word?" },
+    { id = 14, kind = "qa", question = "What port does DNS use?" },
+    { id = 15, kind = "qa", question = "The square root of 196." },
+    { id = 16, kind = "qa", question = "Decode base64: aGFjaw==" },
+    { id = 17, kind = "qa", question = "Hex 'DEAD' as decimal." },
+    { id = 18, kind = "qa", question = "A programmer walks into a bar, orders 1 beer, 2 beers, 4 beers, 8 beers... what's the next number?" },
+    { id = 19, kind = "qa", question = "What is 2 to the 10th power?" },
+    { id = 20, kind = "qa", question = "What Linux file lists mounted filesystems?" },
     { id = 21, kind = "tictactoe",   name = "Tic Tac Toe", question = "Round two. Play O again." },
-    { id = 22, kind = "qa", question = "0xFF in binary.", answers = { "11111111", "0b11111111" } },
-    { id = 23, kind = "qa", question = "What classic hash function was broken by the SHAttered collision in 2017?", answers = { "sha1", "sha-1" } },
-    { id = 24, kind = "qa", question = "The year ARPANET sent its first message.", answers = { "1969" } },
-    { id = 25, kind = "qa", question = "What command prints the current working directory on Linux?", answers = { "pwd" } },
-    { id = 26, kind = "qa", question = "How many bits in a nibble?", answers = { "4", "four" } },
-    { id = 27, kind = "qa", question = "What port is used by SMTP by default?", answers = { "25" } },
-    { id = 28, kind = "qa", question = "Convert 1 KiB to bytes.", answers = { "1024" } },
-    { id = 29, kind = "qa", question = "Three sockets listening on 80, 443, 22. Which one is HTTP?", answers = { "80" } },
+    { id = 22, kind = "qa", question = "0xFF in binary." },
+    { id = 23, kind = "qa", question = "What classic hash function was broken by the SHAttered collision in 2017?" },
+    { id = 24, kind = "qa", question = "The year ARPANET sent its first message." },
+    { id = 25, kind = "qa", question = "What command prints the current working directory on Linux?" },
+    { id = 26, kind = "qa", question = "How many bits in a nibble?" },
+    { id = 27, kind = "qa", question = "What port is used by SMTP by default?" },
+    { id = 28, kind = "qa", question = "Convert 1 KiB to bytes." },
+    { id = 29, kind = "qa", question = "Three sockets listening on 80, 443, 22. Which one is HTTP?" },
     { id = 30, kind = "lightsout",   name = "Lights Out",  question = "The grid again. Clear it." },
-    { id = 31, kind = "qa", question = "What is the IP of localhost?", answers = { "127.0.0.1" } },
-    { id = 32, kind = "qa", question = "Decode hex: 68 65 78", answers = { "hex" } },
-    { id = 33, kind = "qa", question = "0b1010 + 0b0101 in binary.", answers = { "1111", "0b1111" } },
-    { id = 34, kind = "qa", question = "What encoding uses 64 characters to represent binary data as text?", answers = { "base64", "base-64" } },
-    { id = 35, kind = "qa", question = "In cryptography, what does the C in CBC stand for?", answers = { "cipher" } },
-    { id = 36, kind = "qa", question = "Reverse the string 'star' and type it.", answers = { "rats" } },
-    { id = 37, kind = "qa", question = "What four-letter name is given to the loop count variable almost universally?", answers = { "iter", "i" } },
+    { id = 31, kind = "qa", question = "What is the IP of localhost?" },
+    { id = 32, kind = "qa", question = "Decode hex: 68 65 78" },
+    { id = 33, kind = "qa", question = "0b1010 + 0b0101 in binary." },
+    { id = 34, kind = "qa", question = "What encoding uses 64 characters to represent binary data as text?" },
+    { id = 35, kind = "qa", question = "In cryptography, what does the C in CBC stand for?" },
+    { id = 36, kind = "qa", question = "Reverse the string 'star' and type it." },
+    { id = 37, kind = "qa", question = "What four-letter name is given to the loop count variable almost universally?" },
     { id = 38, kind = "memsequence", name = "Memory Sequence", question = "Final sequence. Length 6 to clear." },
-    { id = 39, kind = "qa", question = "What TCP flag initiates a connection?", answers = { "syn" } },
-    { id = 40, kind = "qa", question = "The maximum value of an unsigned 8-bit integer.", answers = { "255" } },
-    { id = 41, kind = "qa", question = "What command in Linux kills a process by its PID?", answers = { "kill" } },
-    { id = 42, kind = "qa", question = "What is 7! (seven factorial)?", answers = { "5040" } },
-    { id = 43, kind = "qa", question = "What is the result of XOR between 0b1101 and 0b1011?", answers = { "0110", "110", "0b0110", "0b110", "6" } },
-    { id = 44, kind = "qa", question = "What is the smallest Fibonacci number greater than 100?", answers = { "144" } },
-    { id = 45, kind = "qa", question = "Which language's logo is a gopher?", answers = { "go", "golang" } },
-    { id = 46, kind = "qa", question = "A trojan hides inside this common gift from Greek mythology.", answers = { "horse", "trojan horse", "wooden horse" } },
+    { id = 39, kind = "qa", question = "What TCP flag initiates a connection?" },
+    { id = 40, kind = "qa", question = "The maximum value of an unsigned 8-bit integer." },
+    { id = 41, kind = "qa", question = "What command in Linux kills a process by its PID?" },
+    { id = 42, kind = "qa", question = "What is 7! (seven factorial)?" },
+    { id = 43, kind = "qa", question = "What is the result of XOR between 0b1101 and 0b1011?" },
+    { id = 44, kind = "qa", question = "What is the smallest Fibonacci number greater than 100?" },
+    { id = 45, kind = "qa", question = "Which language's logo is a gopher?" },
+    { id = 46, kind = "qa", question = "A trojan hides inside this common gift from Greek mythology." },
     { id = 47, kind = "tictactoe",   name = "The Final Puzzle", question = "Final round. Beat the house one last time." },
 }
 

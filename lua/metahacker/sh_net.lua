@@ -7,6 +7,8 @@ MH.Net.Names = {
     StateSync = "mh_state_sync",
     Command = "mh_command",
     Notify = "mh_notify",
+    MailCaptcha = "mh_mail_captcha",
+    PuzzleToken = "mh_puzzle_token",
 }
 
 if SERVER then

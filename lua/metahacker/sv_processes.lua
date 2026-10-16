@@ -349,9 +349,34 @@ Completers.SOFT_SEEK = function(row)
     MH.DB.Query("UPDATE mh_software SET hidden = 0, hidden_version = 0 WHERE id = " .. tonumber(row.soft_id or 0))
 end
 
+local function soft_file_desc(soft)
+    if not soft then return "file" end
+    local meta = MH.Data.Soft[tonumber(soft.soft_type or 0)] or {}
+    local name = tostring(soft.soft_name or "file") .. tostring(meta.ext or "")
+    local verStr = MH.Data.DotVersion(soft.soft_version)
+    return name .. " (" .. verStr .. ")"
+end
+
+local function log_install_action(row, verbPast, soft)
+    local sid = row.creator_sid or ""
+    local desc = soft_file_desc(soft)
+    if row_is_local(row) then
+        MH.State.AppendLog(tonumber(row.local_server),
+            "localhost " .. string.lower(verbPast) .. " file " .. desc)
+    else
+        local target = MH.State.GetServerById(tonumber(row.victim_server))
+        local tgtIp = target and target.ip or "?"
+        local attIp = MH.State.AttackerIP(sid)
+        MH.State.AppendLog(tonumber(row.local_server),
+            "localhost " .. string.lower(verbPast) .. " file " .. desc .. " at [" .. tgtIp .. "]")
+        MH.State.AppendLog(tonumber(row.victim_server),
+            "[" .. attIp .. "] " .. string.lower(verbPast) .. " file " .. desc .. " at localhost")
+    end
+end
+
 Completers.SOFT_UNINSTALL = function(row)
     local soft = MH.DB.QueryRow("SELECT * FROM mh_software WHERE id = " .. tonumber(row.soft_id or 0))
-    log_soft_action(row, "Uninstalled", soft)
+    log_install_action(row, "Uninstalled", soft)
     MH.DB.Query("UPDATE mh_software SET installed = 0 WHERE id = " .. tonumber(row.soft_id or 0))
 end
 
@@ -367,7 +392,7 @@ Completers.SOFT_INSTALL = function(row)
             " (need " .. need .. " MB, free " .. math.max(0, free) .. " MB)")
         return
     end
-    log_soft_action(row, "Installed", soft)
+    log_install_action(row, "Installed", soft)
     MH.DB.Query("UPDATE mh_software SET installed = 1 WHERE id = " .. tonumber(row.soft_id or 0))
 end
 
