@@ -1878,7 +1878,7 @@ Tabs["Internet"] = function(container)
             ["Hack"]             = "icon16/application_xp_terminal.png",
             ["Account login"]    = "icon16/user_suit.png",
             ["Hack account"]     = "icon16/user_gray.png",
-            ["Account overview"] = "icon16/briefcase.png",
+            ["Account overview"] = "icon16/creditcards.png",
         }
         for _, name in ipairs(tabList) do
             local b = vgui.Create("DButton", mainTabBar)
@@ -3604,6 +3604,7 @@ Tabs["Internet"] = function(container)
     local AUTHED_TAB_ICONS = {
         ["Logs"]      = "icon16/book.png",
         ["Softwares"] = "icon16/folder.png",
+        ["Banking"]   = "icon16/briefcase.png",
         ["Logout"]    = "icon16/door_open.png",
     }
     for _, name in ipairs(tabs) do
@@ -4358,12 +4359,13 @@ Tabs["Hacked Database"] = function(container)
     subbar:SetTall(28)
     subbar:DockMargin(0, 2, 0, 6)
 
-    local body = vgui.Create("DPanel", container)
-    body:Dock(TOP)
-    body:SetTall(680)
+    local body = vgui.Create("DScrollPanel", container)
+    body:Dock(FILL)
+    local bodyCanvas = body:GetCanvas()
+    bodyCanvas:DockPadding(0, 0, 2, 0)
 
     local function paint()
-        body:Clear()
+        bodyCanvas:Clear()
         if MH.OS.HackedView == "IP List" then
             local notes = MH.OS.State.notifications or {}
             if #notes > 0 then
