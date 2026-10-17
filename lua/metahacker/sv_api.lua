@@ -1483,11 +1483,6 @@ end
 
 Handlers.bank_internet_hack_acc = function(ply, args)
     local sid = ply:SteamID64()
-    local p = MH.State.GetPlayer(sid)
-    if (tonumber(p and p.cert_level or 0) or 0) < 3 then
-        send_notify(ply, "error", "Requires Intermediate hacking (cert 3)")
-        return
-    end
     if not check_ip_lookup_rate(ply) then return end
     local ip = tostring(args.ip or "")
     local accNum = tostring(args.acc or "")
@@ -1508,7 +1503,12 @@ Handlers.bank_internet_hack_acc = function(ply, args)
     local attV = tonumber(MH.DB.QueryValue("SELECT MAX(soft_version) FROM mh_software WHERE server_id = " ..
         tonumber(srv.id) .. " AND soft_type = 1")) or 0
     if attV <= 0 then send_notify(ply, "error", "No Cracker installed") return end
-    local defV = string.len(acc.acc_pass or "") * 2
+    local defV = tonumber(MH.DB.QueryValue("SELECT MAX(soft_version) FROM mh_software WHERE server_id = " ..
+        tonumber(bank.id) .. " AND soft_type = 2")) or 0
+    if attV < defV then
+        send_notify(ply, "error", "Your Cracker is not strong enough to break this bank's Hasher")
+        return
+    end
     local dur = MH.Data.Dur.crack(attV, defV)
     MH.Proc.Spawn({
         creator_sid = sid, local_server = srv.id, victim_server = tonumber(bank.id),
@@ -1896,7 +1896,7 @@ local MISSION_LEVEL_MULT = { [1] = 1.0, [2] = 1.25, [3] = 1.5 }
 
 local function pick_mission_target(mtype)
     local filter
-    if mtype == 3 then
+    if mtype == 3 or mtype == 4 then
         filter = " AND LOWER(name) LIKE '%bank%'"
     elseif mtype == 50 then
         filter = " AND name = 'MSA'"
@@ -2003,6 +2003,20 @@ hook.Add("InitPostEntity", "mh_mission_board_seed", function()
     timer.Simple(5, function()
         local count = tonumber(MH.DB.QueryValue("SELECT COUNT(*) FROM mh_missions WHERE status = 0")) or 0
         if count < 10 then MH.MissionBoardRegen() end
+        local stale = MH.DB.Query(
+            "SELECT m.id, m.mtype, m.target_server, m.briefing, s.name AS bank_name, s.ip AS bank_ip " ..
+            "FROM mh_missions m INNER JOIN mh_servers s ON s.id = m.target_server " ..
+            "WHERE m.mtype IN (3, 4) AND m.briefing NOT LIKE '%Target bank:%'") or {}
+        for _, m in ipairs(stale) do
+            local acc = MH.DB.QueryRow(
+                "SELECT acc_num FROM mh_banks WHERE bank_npc = " .. tonumber(m.target_server) ..
+                " AND owner_sid LIKE 'npc:%' ORDER BY RANDOM() LIMIT 1")
+            local extra = "\n\nTarget bank: " .. tostring(m.bank_name) .. " (" .. tostring(m.bank_ip) .. ")"
+            if acc then extra = extra .. "\nTarget account: #" .. tostring(acc.acc_num) end
+            MH.DB.Query("UPDATE mh_missions SET briefing = " .. MH.DB.Esc(tostring(m.briefing or "") .. extra) ..
+                (acc and (", info_str = " .. MH.DB.Esc(tostring(acc.acc_num))) or "") ..
+                " WHERE id = " .. tonumber(m.id))
+        end
     end)
 end)
 
@@ -2256,12 +2270,13 @@ Handlers.admin_reset_abuse = function(ply, args)
     end
     local target = tostring(args.sid64 or ""):Trim()
     if target == "" then
-        MH.DB.Query("UPDATE mh_players SET abuse_cmd_hits = 0, abuse_mail_hits = 0, last_abuse_stamp = 0")
+        MH.DB.Query("UPDATE mh_players SET abuse_cmd_hits = 0, abuse_mail_hits = 0, last_abuse_stamp = 0, " ..
+            "total_cmds = 0, total_mails_sent = 0")
         MH.DB.Query("DELETE FROM mh_abuse_log")
         send_notify(ply, "ok", "Reset all abuse stats")
     else
-        MH.DB.Query("UPDATE mh_players SET abuse_cmd_hits = 0, abuse_mail_hits = 0, last_abuse_stamp = 0 WHERE sid64 = " ..
-            MH.DB.Esc(target))
+        MH.DB.Query("UPDATE mh_players SET abuse_cmd_hits = 0, abuse_mail_hits = 0, last_abuse_stamp = 0, " ..
+            "total_cmds = 0, total_mails_sent = 0 WHERE sid64 = " .. MH.DB.Esc(target))
         MH.DB.Query("DELETE FROM mh_abuse_log WHERE sid64 = " .. MH.DB.Esc(target))
         send_notify(ply, "ok", "Reset abuse stats for " .. target)
     end

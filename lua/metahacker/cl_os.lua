@@ -1859,7 +1859,7 @@ Tabs["Internet"] = function(container)
             bankSessActive = true
             tabList = { "Index", "Login", "Hack", "Account overview" }
         else
-            tabList = { "Index", "Login", "Hack", "Account login", "Hack account" }
+            tabList = { "Index", "Login", "Hack", "Account login" }
         end
     end
     local tabSet = {}
@@ -3152,26 +3152,50 @@ Tabs["Internet"] = function(container)
     local function paintRemote()
         sub:Clear()
         rightCol:Clear()
+        local function centered_box(parent, title, boxTall)
+            local wrap = vgui.Create("DPanel", parent)
+            wrap:Dock(TOP)
+            wrap:SetTall(boxTall + 40)
+            wrap:DockMargin(0, 40, 0, 0)
+            wrap.Paint = function() end
+            local boxWide = 440
+            local box = vgui.Create("DPanel", wrap)
+            box:SetSize(boxWide, boxTall)
+            wrap.PerformLayout = function(self)
+                box:SetPos(math.floor((self:GetWide() - boxWide) / 2), 0)
+            end
+            local prompt = vgui.Create("DLabel", box)
+            prompt:Dock(TOP)
+            prompt:SetTall(28)
+            prompt:DockMargin(10, 14, 10, 4)
+            prompt:SetDark(true)
+            prompt:SetContentAlignment(5)
+            prompt:SetText(title)
+            return box
+        end
+
         if MH.OS.InternetView == "Banking" then
-            label(sub, "Check account balance", "DermaDefaultBold"):Dock(TOP)
-            local lookupRow = vgui.Create("DPanel", sub)
+            local balBox = centered_box(sub, "Check account balance", 150)
+            local lookupRow = vgui.Create("DPanel", balBox)
             lookupRow:Dock(TOP)
             lookupRow:SetTall(28)
-            lookupRow:DockMargin(0, 4, 0, 0)
-            local lookupResult = vgui.Create("DLabel", sub)
-            lookupResult:Dock(TOP)
-            lookupResult:SetTall(22)
-            lookupResult:DockMargin(0, 4, 0, 8)
-            lookupResult:SetDark(true)
-            lookupResult:SetText("")
+            lookupRow:DockMargin(60, 6, 60, 0)
+            lookupRow.Paint = function() end
             local lookupEntry = vgui.Create("DTextEntry", lookupRow)
             lookupEntry:Dock(FILL)
             lookupEntry:SetPlaceholderText("Account number")
             local lookupBtn = vgui.Create("DButton", lookupRow)
             lookupBtn:Dock(RIGHT)
             lookupBtn:SetWide(120)
-            lookupBtn:DockMargin(4, 0, 0, 0)
+            lookupBtn:DockMargin(6, 0, 0, 0)
             lookupBtn:SetText("Check balance")
+            local lookupResult = vgui.Create("DLabel", balBox)
+            lookupResult:Dock(TOP)
+            lookupResult:SetTall(22)
+            lookupResult:DockMargin(60, 8, 60, 0)
+            lookupResult:SetDark(true)
+            lookupResult:SetContentAlignment(5)
+            lookupResult:SetText("")
             local function doLookup()
                 local q = string.Trim(tostring(lookupEntry:GetValue() or ""))
                 if q == "" then
@@ -3180,8 +3204,7 @@ Tabs["Internet"] = function(container)
                 end
                 for _, a in ipairs(inet.bank_accounts or {}) do
                     if tostring(a.acc_num or "") == q then
-                        lookupResult:SetText("Account " .. q .. "  balance $" ..
-                            tostring(tonumber(a.cash) or 0))
+                        lookupResult:SetText("Account " .. q .. "  balance $" .. fmt_cash(a.cash))
                         return
                     end
                 end
@@ -3190,24 +3213,42 @@ Tabs["Internet"] = function(container)
             lookupBtn.DoClick = doLookup
             lookupEntry.OnEnter = doLookup
 
-            label(sub, "Transfer money", "DermaDefaultBold"):Dock(TOP)
-            local tRow = vgui.Create("DPanel", sub)
-            tRow:Dock(TOP)
-            tRow:SetTall(28)
-            tRow:DockMargin(0, 4, 0, 0)
-            local tFrom = vgui.Create("DTextEntry", tRow)
-            tFrom:Dock(LEFT) tFrom:SetWide(140) tFrom:SetPlaceholderText("from account")
-            local tPass = vgui.Create("DTextEntry", tRow)
-            tPass:Dock(LEFT) tPass:SetWide(140) tPass:DockMargin(4, 0, 0, 0)
+            local xBox = centered_box(sub, "Transfer money", 180)
+            local rowA = vgui.Create("DPanel", xBox)
+            rowA:Dock(TOP)
+            rowA:SetTall(28)
+            rowA:DockMargin(60, 6, 60, 0)
+            rowA.Paint = function() end
+            local tFrom = vgui.Create("DTextEntry", rowA)
+            tFrom:Dock(LEFT)
+            tFrom:SetWide(150)
+            tFrom:SetPlaceholderText("from account")
+            local tPass = vgui.Create("DTextEntry", rowA)
+            tPass:Dock(FILL)
+            tPass:DockMargin(6, 0, 0, 0)
             tPass:SetPlaceholderText("from password")
-            local tTo = vgui.Create("DTextEntry", tRow)
-            tTo:Dock(LEFT) tTo:SetWide(140) tTo:DockMargin(4, 0, 0, 0)
+            local rowB = vgui.Create("DPanel", xBox)
+            rowB:Dock(TOP)
+            rowB:SetTall(28)
+            rowB:DockMargin(60, 6, 60, 0)
+            rowB.Paint = function() end
+            local tTo = vgui.Create("DTextEntry", rowB)
+            tTo:Dock(LEFT)
+            tTo:SetWide(150)
             tTo:SetPlaceholderText("to account")
-            local tAmt = vgui.Create("DTextEntry", tRow)
-            tAmt:Dock(LEFT) tAmt:SetWide(100) tAmt:DockMargin(4, 0, 0, 0)
-            tAmt:SetPlaceholderText("amount") tAmt:SetNumeric(true)
-            local tSend = vgui.Create("DButton", tRow)
-            tSend:Dock(LEFT) tSend:SetWide(100) tSend:DockMargin(4, 0, 0, 0)
+            local tAmt = vgui.Create("DTextEntry", rowB)
+            tAmt:Dock(FILL)
+            tAmt:DockMargin(6, 0, 0, 0)
+            tAmt:SetPlaceholderText("amount")
+            tAmt:SetNumeric(true)
+            local btnRow = vgui.Create("DPanel", xBox)
+            btnRow:Dock(TOP)
+            btnRow:SetTall(32)
+            btnRow:DockMargin(60, 10, 60, 0)
+            btnRow.Paint = function() end
+            local tSend = vgui.Create("DButton", btnRow)
+            tSend:Dock(RIGHT)
+            tSend:SetWide(100)
             tSend:SetText("Transfer")
             tSend.DoClick = function()
                 send_cmd("bank_transfer", {
@@ -3216,6 +3257,34 @@ Tabs["Internet"] = function(container)
                     to = tTo:GetValue(),
                     amount = tonumber(tAmt:GetValue()),
                 })
+            end
+        elseif MH.OS.InternetView == "Hack account" then
+            local box = centered_box(sub, "Hack a bank account", 150)
+            local row = vgui.Create("DPanel", box)
+            row:Dock(TOP)
+            row:SetTall(28)
+            row:DockMargin(80, 6, 80, 0)
+            row.Paint = function() end
+            local hLbl = vgui.Create("DLabel", row)
+            hLbl:Dock(LEFT)
+            hLbl:SetWide(80)
+            hLbl:SetDark(true)
+            hLbl:SetContentAlignment(5)
+            hLbl:SetText("Account #")
+            local hEntry = vgui.Create("DTextEntry", row)
+            hEntry:Dock(FILL)
+            hEntry:SetPlaceholderText("Account to hack")
+            local btnRow = vgui.Create("DPanel", box)
+            btnRow:Dock(BOTTOM)
+            btnRow:SetTall(44)
+            btnRow:DockMargin(10, 0, 10, 10)
+            btnRow.Paint = function() end
+            local hBtn = vgui.Create("DButton", btnRow)
+            hBtn:Dock(RIGHT)
+            hBtn:SetWide(100)
+            hBtn:SetText("Hack")
+            hBtn.DoClick = function()
+                send_cmd("bank_internet_hack_acc", { ip = tostring(inet.ip or ""), acc = hEntry:GetValue() })
             end
         elseif MH.OS.InternetView == "Logs" then
             local pad = vgui.Create("DPanel", sub)
@@ -3599,13 +3668,17 @@ Tabs["Internet"] = function(container)
 
     local tabs = { "Logs", "Softwares" }
     local showBanking = inet.is_bank and inet.authed and tostring(inet.auth_user or "root") == "root"
-    if showBanking then tabs[#tabs + 1] = "Banking" end
+    if showBanking then
+        tabs[#tabs + 1] = "Banking"
+        tabs[#tabs + 1] = "Hack account"
+    end
     tabs[#tabs + 1] = "Logout"
     local AUTHED_TAB_ICONS = {
-        ["Logs"]      = "icon16/book.png",
-        ["Softwares"] = "icon16/folder.png",
-        ["Banking"]   = "icon16/briefcase.png",
-        ["Logout"]    = "icon16/door_open.png",
+        ["Logs"]         = "icon16/book.png",
+        ["Softwares"]    = "icon16/folder.png",
+        ["Banking"]      = "icon16/briefcase.png",
+        ["Hack account"] = "icon16/user_gray.png",
+        ["Logout"]       = "icon16/door_open.png",
     }
     for _, name in ipairs(tabs) do
         local b = vgui.Create("DButton", subbar)
