@@ -6097,6 +6097,27 @@ Tabs["Admin"] = function(container)
         send_cmd("admin_refresh_missions", {})
     end)
     refreshMissionsB:Dock(LEFT) refreshMissionsB:SetWide(180) refreshMissionsB:DockMargin(6, 0, 0, 0)
+
+    label(container, "Set reputation", "DermaDefaultBold"):Dock(TOP)
+    label(container, "Set a player's rep (exp). Enter SteamID64 and new rep value."):Dock(TOP)
+    local repRow = vgui.Create("DPanel", container)
+    repRow:Dock(TOP) repRow:SetTall(30) repRow:DockMargin(0, 4, 0, 0)
+    local repSidEntry = vgui.Create("DTextEntry", repRow)
+    repSidEntry:Dock(LEFT) repSidEntry:SetWide(220) repSidEntry:SetPlaceholderText("SteamID64")
+    local repValEntry = vgui.Create("DTextEntry", repRow)
+    repValEntry:Dock(LEFT) repValEntry:SetWide(120) repValEntry:DockMargin(6, 0, 0, 0)
+    repValEntry:SetPlaceholderText("New rep")
+    repValEntry:SetNumeric(true)
+    local repSetB = button(repRow, "Set rep", function()
+        local sid = string.Trim(tostring(repSidEntry:GetValue() or ""))
+        local val = tonumber(repValEntry:GetValue())
+        if sid == "" or not val then
+            MH.OS.ShowNotify("warn", "Enter SteamID64 and a numeric rep")
+            return
+        end
+        send_cmd("admin_set_rep", { sid64 = sid, rep = val })
+    end)
+    repSetB:Dock(LEFT) repSetB:SetWide(120) repSetB:DockMargin(6, 0, 0, 0)
 end
 
 surface.CreateFont("MH_Hackerman", {

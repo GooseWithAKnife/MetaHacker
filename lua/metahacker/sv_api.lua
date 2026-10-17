@@ -71,10 +71,6 @@ Handlers.buy_hardware = function(ply, args)
     MH.DB.Query("UPDATE mh_servers SET " .. tierCol .. " = " .. (curIdx + 1) ..
         " WHERE id = " .. serverId)
     MH.State.AppendLog(serverId, "Upgraded " .. string.upper(kind) .. " to " .. nextTier.name)
-    local buyRep = 5 + math.floor(nextTier.price / 10)
-    if kind == "net" then buyRep = buyRep * 2 end
-    MH.DB.Query("UPDATE mh_players SET exp = exp + " .. buyRep ..
-        " WHERE sid64 = " .. MH.DB.Esc(ply:SteamID64()))
     send_notify(ply, "ok", "Installed " .. nextTier.name)
     send_snapshot(ply, serverId)
 end
@@ -93,10 +89,6 @@ Handlers.buy_server = function(ply, args)
     if count >= 1 then
         MH.State.SpendCash(sid, price, "New server allocation (Server#" .. (count + 1) .. ")", id)
     end
-    local slot = count + 1
-    local serverRep = slot == 2 and 100 or (slot == 3 and 500 or (500 * slot))
-    MH.DB.Query("UPDATE mh_players SET exp = exp + " .. serverRep ..
-        " WHERE sid64 = " .. MH.DB.Esc(sid))
     send_notify(ply, "ok", "New server allocated")
     send_snapshot(ply, id)
 end
@@ -382,9 +374,6 @@ Handlers.bank_transfer = function(ply, args)
     MH.DB.Query("UPDATE mh_banks SET cash = cash - " .. amount .. " WHERE id = " .. tonumber(src.id))
     MH.DB.Query("UPDATE mh_banks SET cash = cash + " .. amount .. " WHERE id = " .. tonumber(dst.id))
     MH.State.CheckSourcenetAlert(ply:SteamID64(), amount)
-    local transferRep = 200 + math.floor(amount / 15)
-    MH.DB.Query("UPDATE mh_players SET exp = exp + " .. transferRep ..
-        " WHERE sid64 = " .. MH.DB.Esc(ply:SteamID64()))
     send_notify(ply, "ok", "Transferred $" .. amount .. " to " .. toAcc)
     send_snapshot(ply, 0)
 end
@@ -1216,7 +1205,6 @@ Handlers.xhd_buy = function(ply, args)
     MH.State.SpendCash(ply:SteamID64(), price, "External HD", srv.id)
     MH.DB.Query("INSERT INTO mh_xhds (server_id, name, cap_tier) VALUES (" ..
         tonumber(srv.id) .. ", 'External HD', 1)")
-    MH.DB.Query("UPDATE mh_players SET exp = exp + 100 WHERE sid64 = " .. MH.DB.Esc(ply:SteamID64()))
     MH.State.AppendLog(tonumber(srv.id), "Mounted new external HD")
     send_notify(ply, "ok", "Mounted a new external drive")
     send_snapshot(ply, srv.id)
@@ -1250,7 +1238,6 @@ Handlers.cert_buy = function(ply, args)
     if cash < cert.price then send_notify(ply, "error", "Not enough cash ($" .. cert.price .. ")") return end
     MH.State.SpendCash(sid, cert.price, "Certification: " .. tostring(cert.name or ("Level " .. level)), 0)
     MH.DB.Query("UPDATE mh_players SET cert_level = " .. level ..
-        ", exp = exp + " .. (MH.Data.Rep.CERT or 100) ..
         " WHERE sid64 = " .. MH.DB.Esc(sid))
     MH.State.CheckFBIThresholds(sid)
     MH.State.CheckEmployersFirstJob(sid)
@@ -1597,9 +1584,7 @@ Handlers.bank_internet_transfer = function(ply, args)
     MH.DB.Query("UPDATE mh_banks SET cash = cash - " .. amount .. " WHERE id = " .. tonumber(src.id))
     MH.DB.Query("UPDATE mh_banks SET cash = cash + " .. amount .. " WHERE id = " .. tonumber(dst.id))
     MH.State.CheckSourcenetAlert(sid, amount)
-    local transferRep = 200 + math.floor(amount / 15)
-    MH.DB.Query("UPDATE mh_players SET exp = exp + " .. transferRep ..
-        ", money_transferred = money_transferred + " .. amount ..
+    MH.DB.Query("UPDATE mh_players SET money_transferred = money_transferred + " .. amount ..
         " WHERE sid64 = " .. MH.DB.Esc(sid))
     MH.State.CheckMissionProgress(sid, "bank_transfer", { target_server = tonumber(src.bank_npc) })
     if amount >= 100000 then
@@ -2223,6 +2208,31 @@ Handlers.admin_wipe_user_mail = function(ply)
     send_notify(ply, "ok", "Wiped " .. before .. " user-to-user mails")
     MH.Log.warn("admin", "wipe_user_mail", ply:Nick() .. " wiped " .. before .. " user-to-user mails")
     send_snapshot(ply, 0)
+end
+
+Handlers.admin_set_rep = function(ply, args)
+    if not IsValid(ply) or not ply:IsSuperAdmin() then
+        send_notify(ply, "error", "Superadmin only")
+        return
+    end
+    local target = tostring(args.sid64 or ""):Trim()
+    if not target:match("^%d+$") or #target < 10 then
+        send_notify(ply, "error", "Invalid SteamID64")
+        return
+    end
+    local rep = math.floor(tonumber(args.rep or 0) or 0)
+    if rep < 0 then rep = 0 end
+    local hit = MH.DB.QueryValue("SELECT sid64 FROM mh_players WHERE sid64 = " .. MH.DB.Esc(target))
+    if not hit then
+        send_notify(ply, "error", "No such player: " .. target)
+        return
+    end
+    MH.DB.Query("UPDATE mh_players SET exp = " .. rep .. " WHERE sid64 = " .. MH.DB.Esc(target))
+    send_notify(ply, "ok", "Set rep of " .. target .. " to " .. rep)
+    MH.Log.info("admin", "set_rep", (ply:Nick() or "?") .. " set " .. target .. " rep = " .. rep)
+    local victim = player.GetBySteamID64(target)
+    if IsValid(victim) then MH.Api.SendSnapshot(victim, 0) end
+    MH.Api.SendSnapshot(ply, 0)
 end
 
 Handlers.admin_refresh_missions = function(ply)

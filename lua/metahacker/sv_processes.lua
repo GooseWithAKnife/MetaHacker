@@ -107,7 +107,6 @@ Completers.scan = function(row)
     local sshTag = sshOk and "VULNERABLE" or "FAILED"
     MH.State.AppendLog(serverId, "Scan complete: " .. targetIP .. " (" .. target.name ..
         ")  FTP [" .. ftpTag .. "] SSH [" .. sshTag .. "] firewall v" .. MH.Data.DotVersion(firewallV))
-    MH.DB.Query("UPDATE mh_players SET exp = exp + 50 WHERE sid64 = " .. MH.DB.Esc(row.creator_sid))
 end
 
 Completers.crack = function(row)
@@ -164,10 +163,6 @@ Completers.E_LOG = function(row)
     if not tmp then return end
     MH.State.ReplaceLog(tonumber(tmp.server_id), tostring(tmp.content or ""))
     MH.DB.Query("DELETE FROM mh_tmp_log WHERE id = " .. tmpId)
-    local isRemote = tonumber(row.victim_server or 0) ~= 0
-    local rep = isRemote and 3 or 1
-    MH.DB.Query("UPDATE mh_players SET exp = exp + " .. rep ..
-        " WHERE sid64 = " .. MH.DB.Esc(row.creator_sid))
 end
 
 Completers.D_LOG = function(row)
@@ -219,7 +214,7 @@ Completers.RESET_PWD = function(row)
     end
     MH.DB.Query("UPDATE mh_servers SET root_pass = " .. MH.DB.Esc(newPass) .. " WHERE id = " .. serverId)
     MH.DB.Query("UPDATE mh_players SET pwd_resets = pwd_resets + 1, last_pwd_reset = " .. now() ..
-        ", exp = exp + 15 WHERE sid64 = " .. MH.DB.Esc(sid))
+        " WHERE sid64 = " .. MH.DB.Esc(sid))
     MH.State.AppendLog(serverId, "Root password rotated")
     MH.DB.Query("DELETE FROM mh_hacked WHERE target_server = " .. serverId)
 end
@@ -240,7 +235,7 @@ Completers.RESET_IP = function(row)
     local oldIp = srv.ip or "?"
     MH.DB.Query("UPDATE mh_servers SET ip = " .. MH.DB.Esc(newIp) .. " WHERE id = " .. serverId)
     MH.DB.Query("UPDATE mh_players SET ip_resets = ip_resets + 1, last_ip_reset = " .. now() ..
-        ", exp = exp + 50 WHERE sid64 = " .. MH.DB.Esc(sid))
+        " WHERE sid64 = " .. MH.DB.Esc(sid))
     MH.State.AppendLog(serverId, "IP reset: " .. oldIp .. " -> " .. newIp)
 end
 
@@ -281,9 +276,6 @@ Completers.AV_SCAN = function(row)
             MH.DB.Query("UPDATE mh_server_log SET content = content WHERE server_id = " .. targetId)
         end
     end
-    local rep = (isLocal and 10 or 15) * avVer
-    MH.DB.Query("UPDATE mh_players SET exp = exp + " .. rep ..
-        " WHERE sid64 = " .. MH.DB.Esc(row.creator_sid))
 end
 
 Completers.DOOM_SPREAD = function(row)
