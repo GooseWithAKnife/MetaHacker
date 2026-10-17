@@ -1172,6 +1172,17 @@ Handlers.hacked_bank_withdraw = function(ply, args)
     MH.State.CheckSourcenetAlert(sid, take)
     MH.State.CheckMissionProgress(sid, "bank_transfer", { target_server = tonumber(src.bank_npc) })
     MH.State.AwardBadge(sid, "first_bank_steal")
+    local attackerIp = MH.State.AttackerIP(sid)
+    MH.State.AppendLog(tonumber(src.bank_npc),
+        "[" .. attackerIp .. "] transfered $" .. take ..
+        " from #" .. tostring(row.acc_num) .. " to [" .. attackerIp .. "]")
+    local primary = MH.State.GetServersFor(sid)[1]
+    if primary then
+        MH.State.AppendLog(primary.id,
+            "localhost transfered $" .. take ..
+            " from #" .. tostring(row.acc_num) ..
+            " on bank [" .. tostring(row.bank_ip or "?") .. "] to localhost")
+    end
     send_notify(ply, "ok", "Siphoned $" .. take .. " from " .. row.acc_num)
     send_snapshot(ply, 0)
 end

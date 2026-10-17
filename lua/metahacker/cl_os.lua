@@ -1914,7 +1914,7 @@ Tabs["Internet"] = function(container)
         local tagText, tagVariant = get_server_tag(inet)
         server_tag(body, tagText, tagVariant)
     end
-    if mainTab == "Index" and whoisTier then
+    if mainTab == "Index" and whoisTier and not inet.authed then
         label(body, tostring(inet.name) .. " directory", "DermaDefaultBold"):Dock(TOP)
         local svcs = MH.OS.State.public_services or {}
         local discoveredIds = {}
