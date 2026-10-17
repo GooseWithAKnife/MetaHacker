@@ -13,6 +13,20 @@ surface.CreateFont("MH_MailBody", {
     antialias = true,
 })
 
+surface.CreateFont("MH_BankWelcome", {
+    font = "Tahoma",
+    size = 16,
+    weight = 400,
+    antialias = true,
+})
+
+surface.CreateFont("MH_BankWelcomeBold", {
+    font = "Tahoma",
+    size = 16,
+    weight = 700,
+    antialias = true,
+})
+
 local NOTIFY_COL = {
     ok    = Color(90, 200, 120),
     warn  = Color(230, 170, 50),
@@ -164,7 +178,7 @@ end
 
 local SERVER_TAG_VARIANTS = {
     default   = { bg = Color(153, 153, 153), fg = Color(255, 255, 255) },
-    inverse   = { bg = Color( 20,  20,  20), fg = Color(255, 255, 255) },
+    inverse   = { bg = Color( 55,  55,  55), fg = Color(255, 255, 255) },
     success   = { bg = Color( 70, 136,  71), fg = Color(255, 255, 255) },
     warning   = { bg = Color(248, 148,   6), fg = Color(255, 255, 255) },
     important = { bg = Color(185,  74,  72), fg = Color(255, 255, 255) },
@@ -550,7 +564,7 @@ Tabs["Home"] = function(container)
     local passRow = vgui.Create("DPanel", info)
     passRow:Dock(TOP)
     passRow:SetTall(22)
-    passRow:DockMargin(0, 6, 6, 0)
+    passRow:DockMargin(0, 4, 6, 0)
     passRow.Paint = function() end
     local changeB = vgui.Create("DButton", passRow)
     changeB:Dock(RIGHT)
@@ -1857,7 +1871,7 @@ Tabs["Internet"] = function(container)
         local mainTabBar = vgui.Create("DPanel", body)
         mainTabBar:Dock(TOP)
         mainTabBar:SetTall(28)
-        mainTabBar:DockMargin(0, 6, 0, 0)
+        mainTabBar:DockMargin(0, 0, 0, 0)
         local TAB_ICONS = {
             ["Index"]            = "icon16/application_side_boxes.png",
             ["Login"]            = "icon16/application_side_expand.png",
@@ -2732,7 +2746,7 @@ Tabs["Internet"] = function(container)
             surface.SetFont("DermaLarge")
             local tw = select(1, surface.GetTextSize(self:GetText() or ""))
             local textX = math.floor((w - tw) / 2) + 10
-            local iconX = textX - iconSize - 64
+            local iconX = textX - iconSize - 56
             surface.SetDrawColor(255, 255, 255, 255)
             surface.SetMaterial(moneyMat)
             surface.DrawTexturedRect(iconX, math.floor((h - iconSize) / 2), iconSize, iconSize)
@@ -3022,29 +3036,42 @@ Tabs["Internet"] = function(container)
             local bankName = tostring(inet.name or "bank")
             local welcomeRow = vgui.Create("DPanel", body)
             welcomeRow:Dock(TOP)
-            welcomeRow:SetTall(18)
+            welcomeRow:SetTall(26)
+            welcomeRow:DockMargin(12, 0, 0, 0)
             welcomeRow.Paint = function() end
             local prefix = vgui.Create("DLabel", welcomeRow)
             prefix:Dock(LEFT)
             prefix:SetDark(true)
+            prefix:SetFont("MH_BankWelcome")
             prefix:SetText("Welcome to the ")
             prefix:SizeToContents()
             local bankLbl = vgui.Create("DLabel", welcomeRow)
             bankLbl:Dock(LEFT)
             bankLbl:SetDark(true)
-            bankLbl:SetFont("DermaDefaultBold")
+            bankLbl:SetFont("MH_BankWelcomeBold")
             bankLbl:SetText(bankName)
             bankLbl:SizeToContents()
             local suffix = vgui.Create("DLabel", welcomeRow)
             suffix:Dock(LEFT)
             suffix:SetDark(true)
+            suffix:SetFont("MH_BankWelcome")
             suffix:SetText(".")
             suffix:SizeToContents()
 
             local spacer = vgui.Create("DPanel", body)
             spacer:Dock(TOP) spacer:SetTall(10) spacer.Paint = function() end
 
-            label(body, "We have a very modest defense, but at least you didn't have to pay for an account."):Dock(TOP)
+            local blurbRow = vgui.Create("DPanel", body)
+            blurbRow:Dock(TOP)
+            blurbRow:SetTall(22)
+            blurbRow:DockMargin(12, 0, 0, 0)
+            blurbRow.Paint = function() end
+            local blurbLbl = vgui.Create("DLabel", blurbRow)
+            blurbLbl:Dock(LEFT)
+            blurbLbl:SetDark(true)
+            blurbLbl:SetFont("MH_BankWelcome")
+            blurbLbl:SetText("We have a very modest defense, but at least you didn't have to pay for an account.")
+            blurbLbl:SizeToContents()
 
             local spacer2 = vgui.Create("DPanel", body)
             spacer2:Dock(TOP) spacer2:SetTall(10) spacer2.Paint = function() end
@@ -3052,6 +3079,8 @@ Tabs["Internet"] = function(container)
             local loginLink = vgui.Create("DButton", body)
             loginLink:Dock(TOP)
             loginLink:SetTall(20)
+            loginLink:DockMargin(12, 0, 0, 0)
+            loginLink:SetFont("MH_BankWelcome")
             loginLink:SetText("Login to your account.")
             loginLink:SetContentAlignment(4)
             loginLink:SetTextInset(0, 0)
@@ -4145,7 +4174,7 @@ Tabs["Finances"] = function(container)
         surface.SetFont("DermaLarge")
         local tw = select(1, surface.GetTextSize(self:GetText() or ""))
         local textX = math.floor((w - tw) / 2) + 10
-        local iconX = textX - finIconSize - 64
+        local iconX = textX - finIconSize - 56
         surface.SetDrawColor(255, 255, 255, 255)
         surface.SetMaterial(finMoneyMat)
         surface.DrawTexturedRect(iconX, math.floor((h - finIconSize) / 2), finIconSize, finIconSize)
@@ -5937,6 +5966,149 @@ Tabs["Admin"] = function(container)
     refreshMissionsB:Dock(LEFT) refreshMissionsB:SetWide(180) refreshMissionsB:DockMargin(6, 0, 0, 0)
 end
 
+surface.CreateFont("MH_Hackerman", {
+    font = "Lucida Console", size = 14, weight = 500, antialias = true,
+})
+
+local HACKERMAN_GLYPHS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789<>#$%&?!@*+="
+local HACKERMAN_CHAR_W = 9
+local HACKERMAN_CHAR_H = 14
+local HACKERMAN_TRAIL = 12
+local HACKERMAN_HEAD = Color(220, 190, 230)
+local HACKERMAN_BODY = Color(159, 75, 163)
+local HACKERMAN_SPARK = Color(255, 240, 170)
+local HACKERMAN_SPARK_CORE = Color(255, 250, 210)
+local HACKERMAN_WORDS = {
+    "GOOSE", "PYTHON", "META", "HACK", "GARRY", "RAK", "DOOM",
+    "ROOT", "SUDO", "BTC", "WIRE", "WAREZ", "VIRUS", "0DAY",
+}
+local HACKERMAN_LEET_SUB = { E = "3", A = "4", O = "0", I = "1", S = "5", T = "7" }
+local HACKERMAN_LEET_CHANCE = 0.5
+local HACKERMAN_WORD_CHANCE = 0.3
+local HACKERMAN_CHAR_FLIP_CHANCE = 0.22
+
+local function hackerman_rand_char()
+    local n = #HACKERMAN_GLYPHS
+    local i = math.random(1, n)
+    return string.sub(HACKERMAN_GLYPHS, i, i)
+end
+
+local function hackerman_pick_word()
+    local base = HACKERMAN_WORDS[math.random(1, #HACKERMAN_WORDS)]
+    local out = {}
+    for i = 1, #base do
+        local c = string.sub(base, i, i)
+        local sub = HACKERMAN_LEET_SUB[c]
+        if sub and math.random() < HACKERMAN_LEET_CHANCE then
+            out[i] = sub
+        else
+            out[i] = c
+        end
+    end
+    return table.concat(out)
+end
+
+local function hackerman_maybe_apply_word(col)
+    col.word_len = 0
+    if math.random() > HACKERMAN_WORD_CHANCE then return end
+    local word = hackerman_pick_word()
+    local n = math.min(#word, HACKERMAN_TRAIL)
+    for j = 1, n do
+        col.chars[j] = string.sub(word, n - j + 1, n - j + 1)
+    end
+    col.word_len = n
+end
+
+local function attach_hackerman(panel)
+    local cols = {}
+    local last_time = SysTime()
+    local last_w, last_h = 0, 0
+    local function roll_char_lifecycle(col, j)
+        col.char_life[j] = math.Rand(1.2, 3.0)
+        col.char_age[j] = 0
+    end
+    local function reset_column(col, h)
+        col.y = -math.random() * h * 0.5
+        col.speed = 24 + math.random() * 48
+        col.phase = math.random() * math.pi * 2
+        col.shimmer_speed = 1.5 + math.random() * 3.5
+        col.chars = col.chars or {}
+        col.char_life = col.char_life or {}
+        col.char_age = col.char_age or {}
+        for j = 1, HACKERMAN_TRAIL do
+            col.chars[j] = hackerman_rand_char()
+            col.char_life[j] = math.Rand(1.2, 3.0)
+            col.char_age[j] = math.Rand(0, col.char_life[j])
+        end
+        hackerman_maybe_apply_word(col)
+    end
+    local base_paint = panel.Paint
+    panel.Paint = function(self, w, h)
+        if base_paint then base_paint(self, w, h) end
+        if w ~= last_w or h ~= last_h then
+            cols = {}
+            local n = math.max(1, math.floor(w / HACKERMAN_CHAR_W))
+            for i = 1, n do
+                cols[i] = {}
+                reset_column(cols[i], h)
+                cols[i].y = math.random() * h
+            end
+            last_w, last_h = w, h
+        end
+        local nowT = SysTime()
+        local dt = math.min(0.1, nowT - last_time)
+        last_time = nowT
+
+        surface.SetFont("MH_Hackerman")
+        for i, col in ipairs(cols) do
+            col.y = col.y + col.speed * dt
+            local x = (i - 1) * HACKERMAN_CHAR_W + 2
+            if col.y > h + HACKERMAN_TRAIL * HACKERMAN_CHAR_H then
+                reset_column(col, h)
+            end
+            if math.random() < HACKERMAN_CHAR_FLIP_CHANCE then
+                local flips = math.random(1, 3)
+                for _ = 1, flips do
+                    local idx = math.random(1, HACKERMAN_TRAIL)
+                    if idx > (col.word_len or 0) then
+                        col.chars[idx] = hackerman_rand_char()
+                    end
+                end
+            end
+            for j = 1, HACKERMAN_TRAIL do
+                local y = col.y - (j - 1) * HACKERMAN_CHAR_H
+                if y >= 0 and y + HACKERMAN_CHAR_H <= h then
+                    col.char_age[j] = col.char_age[j] + dt
+                    local t = col.char_age[j] / col.char_life[j]
+                    if t >= 1 then
+                        if j > (col.word_len or 0) then
+                            col.chars[j] = hackerman_rand_char()
+                        end
+                        roll_char_lifecycle(col, j)
+                        t = 0
+                    end
+                    local fade = 1 - math.abs((t * 2) - 1)
+                    local shimmer = 0.75 + 0.25 * math.sin(nowT * col.shimmer_speed + col.phase + j * 0.9)
+                    local r, g, b, a
+                    if j == 1 then
+                        r, g, b = HACKERMAN_HEAD.r, HACKERMAN_HEAD.g, HACKERMAN_HEAD.b
+                        a = math.floor(220 * shimmer * fade)
+                    else
+                        r, g, b = HACKERMAN_BODY.r, HACKERMAN_BODY.g, HACKERMAN_BODY.b
+                        a = math.floor(180 * (1 - (j - 1) / HACKERMAN_TRAIL) * shimmer * fade)
+                    end
+                    if a > 0 then
+                        surface.SetTextColor(r, g, b, a)
+                        surface.SetTextPos(x, y)
+                        surface.DrawText(col.chars[j])
+                    end
+                end
+            end
+        end
+
+    end
+end
+
 local function build_frame()
     if IsValid(MH.OS.Frame) then MH.OS.Frame:Remove() end
     local f = vgui.Create("DFrame")
@@ -5945,7 +6117,9 @@ local function build_frame()
     f:SetTitle("MetaHacker")
     f:SetDeleteOnClose(true)
     f:MakePopup()
+    f:SetSkin("mh_dark")
     MH.OS.Frame = f
+    attach_hackerman(f)
 
     local body = vgui.Create("DPanel", f)
     body:Dock(FILL)

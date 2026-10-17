@@ -34,6 +34,7 @@ load_sv("metahacker/sv_processes.lua")
 load_sv("metahacker/sv_viruses.lua")
 load_sv("metahacker/sv_api.lua")
 
+load_cl("metahacker/cl_skin.lua")
 load_cl("metahacker/cl_os.lua")
 
 MH.Log.info("boot", "init", "Metahacker loaded (" .. (SERVER and "server" or "client") .. ")")
