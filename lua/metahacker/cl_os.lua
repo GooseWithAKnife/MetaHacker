@@ -1878,7 +1878,7 @@ Tabs["Internet"] = function(container)
             ["Hack"]             = "icon16/application_xp_terminal.png",
             ["Account login"]    = "icon16/user_suit.png",
             ["Hack account"]     = "icon16/user_gray.png",
-            ["Account overview"] = "icon16/creditcards.png",
+            ["Account overview"] = "icon16/briefcase.png",
         }
         for _, name in ipairs(tabList) do
             local b = vgui.Create("DButton", mainTabBar)
@@ -3034,6 +3034,34 @@ Tabs["Internet"] = function(container)
 
         if inet.is_bank then
             local bankName = tostring(inet.name or "bank")
+            local BANK_INFO = {
+                ["First International Bank"] = {
+                    blurb = "We have a very modest defense, but at least you didn't have to pay for an account.",
+                    register_cost = 0,
+                },
+                ["HEBC Bank"] = {
+                    blurb = "Fast, friendly service. Deposit today, protected tomorrow.",
+                    register_cost = 500,
+                },
+                ["American Express Bank"] = {
+                    blurb = "Where your money travels first class.",
+                    register_cost = 5000,
+                },
+                ["Swiss International Bank"] = {
+                    blurb = "Offshore. Off the record. Off limits.",
+                    register_cost = 20000,
+                },
+                ["Ultimate Bank"] = {
+                    blurb = "Safety matters. You won't find a safer bank.",
+                    register_cost = 100000,
+                },
+            }
+            local info = BANK_INFO[bankName] or { blurb = "Trusted banking for discerning hackers.", register_cost = 1000 }
+            local hasAccount = false
+            for _, b in ipairs(MH.OS.State.banks or {}) do
+                if tonumber(b.bank_npc or 0) == tonumber(inet.id or 0) then hasAccount = true break end
+            end
+
             local welcomeRow = vgui.Create("DPanel", body)
             welcomeRow:Dock(TOP)
             welcomeRow:SetTall(26)
@@ -3070,27 +3098,37 @@ Tabs["Internet"] = function(container)
             blurbLbl:Dock(LEFT)
             blurbLbl:SetDark(true)
             blurbLbl:SetFont("MH_BankWelcome")
-            blurbLbl:SetText("We have a very modest defense, but at least you didn't have to pay for an account.")
+            blurbLbl:SetText(info.blurb)
             blurbLbl:SizeToContents()
 
             local spacer2 = vgui.Create("DPanel", body)
             spacer2:Dock(TOP) spacer2:SetTall(10) spacer2.Paint = function() end
 
-            local loginLink = vgui.Create("DButton", body)
-            loginLink:Dock(TOP)
-            loginLink:SetTall(20)
-            loginLink:DockMargin(12, 0, 0, 0)
-            loginLink:SetFont("MH_BankWelcome")
-            loginLink:SetText("Login to your account.")
-            loginLink:SetContentAlignment(4)
-            loginLink:SetTextInset(0, 0)
-            loginLink.Paint = function() end
-            loginLink.PaintOver = function() end
-            loginLink:SetTextColor(Color(60, 100, 190))
-            loginLink:SizeToContents()
-            loginLink.DoClick = function()
-                MH.OS.InternetMainTab = "Account login"
-                if MH.OS.Rebuild then MH.OS.Rebuild() end
+            local actionLink = vgui.Create("DButton", body)
+            actionLink:Dock(TOP)
+            actionLink:SetTall(20)
+            actionLink:DockMargin(12, 0, 0, 0)
+            actionLink:SetFont("MH_BankWelcome")
+            if hasAccount then
+                actionLink:SetText("Login to your account.")
+            elseif info.register_cost > 0 then
+                actionLink:SetText("Register an account for $" .. fmt_cash(info.register_cost) .. ".")
+            else
+                actionLink:SetText("Register a free account.")
+            end
+            actionLink:SetContentAlignment(4)
+            actionLink:SetTextInset(0, 0)
+            actionLink.Paint = function() end
+            actionLink.PaintOver = function() end
+            actionLink:SetTextColor(Color(60, 100, 190))
+            actionLink:SizeToContents()
+            actionLink.DoClick = function()
+                if hasAccount then
+                    MH.OS.InternetMainTab = "Account login"
+                    if MH.OS.Rebuild then MH.OS.Rebuild() end
+                else
+                    send_cmd("bank_create", { bank_id = inet.id })
+                end
             end
         end
 
@@ -4085,6 +4123,8 @@ Tabs["University"] = function(container)
                 end
                 line.MH_SoftId = tonumber(s.id)
                 line.MH_SoftTypeName = meta.name
+                line:SetSortValue(3, curV)
+                line:SetSortValue(5, tonumber(line.MH_Cost) or -1)
             end
         end
         local function fireLine(lineRef)
@@ -4418,8 +4458,10 @@ Tabs["Hacked Database"] = function(container)
             end
 
             local function ago_text(stamp)
+                local s = tonumber(stamp) or 0
+                if s <= 0 then return "never collected" end
                 local nowT = os.time()
-                local diff = math.max(0, nowT - (tonumber(stamp) or nowT))
+                local diff = math.max(0, nowT - s)
                 if diff < 60 then return diff .. "s ago" end
                 if diff < 3600 then return math.floor(diff / 60) .. "m ago" end
                 if diff < 86400 then return math.floor(diff / 3600) .. "h ago" end
@@ -5201,6 +5243,9 @@ Tabs["Missions"] = function(container)
                 statusTxt = MISSION_STATUS_TXT[tonumber(m.status)] or tostring(m.status)
             end
             local line = list:AddLine(title, giver, targetTxt, prizeTxt, diffTxt, statusTxt)
+            if not locked then
+                line:SetSortValue(4, tonumber(m.prize) or 0)
+            end
             line.MH_Mission = m
         end
 
@@ -5472,6 +5517,7 @@ Tabs["Mail"] = function(container)
                 os.date("%Y-%m-%d %H:%M", tonumber(m.stamp or 0))
             )
             lineRef.MH_Mail = m
+            lineRef:SetSortValue(4, tonumber(m.stamp) or 0)
         end
 
         local selected = nil
@@ -5716,14 +5762,19 @@ Tabs["Ranking"] = function(container)
         else
             for rank, r in ipairs(rows) do
                 local valStr
+                local valNum
                 if c.software then
                     local meta = MH.Data.Soft[tonumber(r.soft_type or 0)] or {}
                     valStr = tostring(r.soft_name or "?") .. (meta.ext or "") ..
                         " v" .. MH.Data.DotVersion(r.soft_version)
+                    valNum = tonumber(r.soft_version) or 0
                 else
-                    valStr = c.valueFmt(tonumber(r.val) or 0)
+                    valNum = tonumber(r.val) or 0
+                    valStr = c.valueFmt(valNum)
                 end
-                list:AddLine(tostring(rank), tostring(r.nick or "?"), valStr)
+                local line = list:AddLine(tostring(rank), tostring(r.nick or "?"), valStr)
+                line:SetSortValue(1, rank)
+                line:SetSortValue(3, valNum)
             end
         end
     end
@@ -5871,6 +5922,11 @@ Tabs["Admin"] = function(container)
             tostring(s.total_cmds or 0), tostring(s.total_mails_sent or 0),
             lastStr)
         line.MH_SID = tostring(s.sid64 or "")
+        line:SetSortValue(3, tonumber(s.abuse_cmd_hits) or 0)
+        line:SetSortValue(4, tonumber(s.abuse_mail_hits) or 0)
+        line:SetSortValue(5, tonumber(s.total_cmds) or 0)
+        line:SetSortValue(6, tonumber(s.total_mails_sent) or 0)
+        line:SetSortValue(7, last)
     end
     statsList.OnRowRightClick = function(_, _, lineRef)
         if not lineRef or not lineRef.MH_SID then return end
@@ -5908,6 +5964,8 @@ Tabs["Admin"] = function(container)
             tostring(m.nick or "?"), tostring(m.sid64 or ""),
             tostring(m.cnt or 0), lastStr)
         line.MH_SID = tostring(m.sid64 or "")
+        line:SetSortValue(3, tonumber(m.cnt) or 0)
+        line:SetSortValue(4, last)
     end
     mailStats.OnRowRightClick = function(_, _, lineRef)
         if not lineRef or not lineRef.MH_SID then return end

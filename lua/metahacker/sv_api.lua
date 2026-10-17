@@ -304,6 +304,10 @@ Handlers.crack_ip = function(ply, args)
         return
     end
     local victim = MH.State.GetServerById(tonumber(target.id))
+    if cfg.kind == "xp" and tostring(victim.name or "") == "MSA" then
+        send_notify(ply, "error", "It's impossible to exploit the MSA. You should try to perform a bruteforce attack instead.")
+        return
+    end
     local defSoft = MH.DB.QueryRow("SELECT soft_version FROM mh_software WHERE server_id = " .. tonumber(victim.id) ..
         " AND soft_type = " .. cfg.defender_type .. " ORDER BY soft_version DESC LIMIT 1")
     local defVer = defSoft and tonumber(defSoft.soft_version) or 0
@@ -325,6 +329,14 @@ Handlers.crack_ip = function(ply, args)
     send_snapshot(ply, srv.id)
 end
 
+local BANK_REGISTER_COST = {
+    ["First International Bank"] = 0,
+    ["HEBC Bank"] = 500,
+    ["American Express Bank"] = 5000,
+    ["Swiss International Bank"] = 20000,
+    ["Ultimate Bank"] = 100000,
+}
+
 Handlers.bank_create = function(ply, args)
     local sid = ply:SteamID64()
     local bankNpc = tonumber(args.bank_id or 0) or 0
@@ -335,6 +347,16 @@ Handlers.bank_create = function(ply, args)
     local existing = MH.DB.QueryValue("SELECT id FROM mh_banks WHERE bank_npc = " .. bankNpc ..
         " AND owner_sid = " .. MH.DB.Esc(sid) .. " LIMIT 1")
     if existing then send_notify(ply, "error", "You already have an account at " .. tostring(bank.name)) return end
+    local cost = BANK_REGISTER_COST[tostring(bank.name)] or 1000
+    if cost > 0 then
+        local p = MH.State.GetPlayer(sid)
+        local cash = tonumber(p and p.cash or 0) or 0
+        if cash < cost then
+            send_notify(ply, "error", "Not enough cash. Registration costs $" .. MH.Data.FmtCash(cost))
+            return
+        end
+        MH.State.SpendCash(sid, cost, "Bank registration at " .. tostring(bank.name), 0)
+    end
     local acc = tostring(math.random(111111111, 999999999))
     local pass = MH.State.GenPass(6)
     MH.DB.Query("INSERT INTO mh_banks (bank_npc, acc_num, acc_pass, owner_sid, cash, created) VALUES (" ..
@@ -1944,6 +1966,19 @@ function MH.MissionBoardRegen()
                             info = tostring(softRow.soft_type or "")
                         else
                             briefing = briefing .. "\n\nTarget file: any file on the server"
+                        end
+                    elseif pick.mtype == 3 or pick.mtype == 4 then
+                        local bank = MH.DB.QueryRow("SELECT id, name, ip FROM mh_servers WHERE id = " .. tid)
+                        local acc = MH.DB.QueryRow(
+                            "SELECT acc_num FROM mh_banks WHERE bank_npc = " .. tid ..
+                            " AND owner_sid LIKE 'npc:%' ORDER BY RANDOM() LIMIT 1")
+                        if bank then
+                            briefing = briefing .. "\n\nTarget bank: " .. tostring(bank.name) ..
+                                " (" .. tostring(bank.ip) .. ")"
+                        end
+                        if acc then
+                            briefing = briefing .. "\nTarget account: #" .. tostring(acc.acc_num)
+                            infoStr = tostring(acc.acc_num)
                         end
                     end
                     seen[key] = true
