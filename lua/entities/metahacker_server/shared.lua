@@ -1,7 +1,7 @@
 AddCSLuaFile()
 MH.EntBase.Setup(ENT, {
     PrintName = "MetaHacker",
-    Model = "models/props_lab/monitor02.mdl",
+    Model = "models/props_silo/silo_launchroom_monitor.mdl",
     Kind = "server",
 })
 
