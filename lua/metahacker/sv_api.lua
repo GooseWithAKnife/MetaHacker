@@ -904,7 +904,7 @@ Handlers.mail_send = function(ply, args)
     local subject = tostring(args.subject or ""):sub(1, MAIL_SUBJECT_MAX)
     local body = tostring(args.body or "")
     if subject == "" or body == "" then send_notify(ply, "error", "Subject and body required") return end
-    if subject:find("[^azAZ09.,!?%s_%-$()\"'A-Za-z]") then
+    if subject:find("[^0-9.,:!?%s_%-$()\"'A-Za-z]") then
         send_notify(ply, "error", "Subject contains disallowed characters")
         return
     end

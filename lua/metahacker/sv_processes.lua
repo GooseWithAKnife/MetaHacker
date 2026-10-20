@@ -114,46 +114,55 @@ Completers.crack = function(row)
     local victimSrv = tonumber(row.victim_server)
     local victim = MH.State.GetServerById(victimSrv)
     if not victim then return end
-    MH.DB.Query("INSERT INTO mh_hacked (owner_sid, target_server, discovered_pass, stamp) VALUES (" ..
-        MH.DB.Esc(row.creator_sid) .. ", " .. victimSrv .. ", " ..
-        MH.DB.Esc(victim.root_pass) .. ", " .. now() .. ")")
+    local already = MH.DB.QueryValue("SELECT id FROM mh_hacked WHERE owner_sid = " ..
+        MH.DB.Esc(row.creator_sid) .. " AND target_server = " .. victimSrv)
+    if already then
+        MH.DB.Query("UPDATE mh_hacked SET discovered_pass = " .. MH.DB.Esc(victim.root_pass) ..
+            ", stamp = " .. now() .. " WHERE id = " .. tonumber(already))
+    else
+        MH.DB.Query("INSERT INTO mh_hacked (owner_sid, target_server, discovered_pass, stamp) VALUES (" ..
+            MH.DB.Esc(row.creator_sid) .. ", " .. victimSrv .. ", " ..
+            MH.DB.Esc(victim.root_pass) .. ", " .. now() .. ")")
+    end
     MH.State.MarkDiscovered(row.creator_sid, victimSrv)
     MH.State.AppendLog(attackerSrv, "Cracked " .. victim.ip .. " root pass acquired")
     MH.DB.Query("INSERT OR REPLACE INTO mh_internet (owner_sid, target_server, authed, stamp) VALUES (" ..
         MH.DB.Esc(row.creator_sid) .. ", " .. victimSrv .. ", 1, " .. now() .. ")")
     MH.State.AppendLog(victimSrv, "User logged in from " .. MH.State.AttackerIP(row.creator_sid or ""))
-    local hashV = tonumber(MH.DB.QueryValue(
-        "SELECT MAX(soft_version) FROM mh_software WHERE server_id = " .. victimSrv ..
-        " AND soft_type = 2")) or 0
-    local crackV = tonumber(MH.DB.QueryValue(
-        "SELECT MAX(soft_version) FROM mh_software WHERE server_id = " .. victimSrv ..
-        " AND soft_type = 1")) or 0
-    local hackRep = (MH.Data.Rep.HACK_BASE or 50) + math.floor(hashV + crackV)
-    MH.DB.Query("UPDATE mh_players SET exp = exp + " .. hackRep ..
-        " WHERE sid64 = " .. MH.DB.Esc(row.creator_sid))
-    MH.State.CheckFBIThresholds(row.creator_sid)
-    MH.State.AwardBadge(row.creator_sid, "first_hack")
-    MH.DB.Query("UPDATE mh_players SET hack_count = hack_count + 1 WHERE sid64 = " .. MH.DB.Esc(row.creator_sid))
-    local nick = MH.DB.QueryValue("SELECT nick FROM mh_players WHERE sid64 = " .. MH.DB.Esc(row.creator_sid)) or "someone"
-    if tonumber(victim.is_npc) == 1 and
-        (victim.name == "MSA" or victim.name == "Employers" or
-         string.find(string.lower(victim.name or ""), "bank"))
-    then
-        MH.State.AddNews(nick .. " cracked " .. victim.name)
+    if not already then
+        local hashV = tonumber(MH.DB.QueryValue(
+            "SELECT MAX(soft_version) FROM mh_software WHERE server_id = " .. victimSrv ..
+            " AND soft_type = 2")) or 0
+        local crackV = tonumber(MH.DB.QueryValue(
+            "SELECT MAX(soft_version) FROM mh_software WHERE server_id = " .. victimSrv ..
+            " AND soft_type = 1")) or 0
+        local hackRep = (MH.Data.Rep.HACK_BASE or 50) + math.floor(hashV + crackV)
+        MH.DB.Query("UPDATE mh_players SET exp = exp + " .. hackRep ..
+            " WHERE sid64 = " .. MH.DB.Esc(row.creator_sid))
+        MH.State.CheckFBIThresholds(row.creator_sid)
+        MH.State.AwardBadge(row.creator_sid, "first_hack")
+        MH.DB.Query("UPDATE mh_players SET hack_count = hack_count + 1 WHERE sid64 = " .. MH.DB.Esc(row.creator_sid))
+        local nick = MH.DB.QueryValue("SELECT nick FROM mh_players WHERE sid64 = " .. MH.DB.Esc(row.creator_sid)) or "someone"
+        if tonumber(victim.is_npc) == 1 and
+            (victim.name == "MSA" or victim.name == "Employers" or
+             string.find(string.lower(victim.name or ""), "bank"))
+        then
+            MH.State.AddNews(nick .. " cracked " .. victim.name)
+        end
+        if tonumber(victim.is_npc) == 1 and string.find(string.lower(victim.name or ""), "bank") then
+            local accts = MH.DB.Query("SELECT acc_num, acc_pass FROM mh_banks WHERE bank_npc = " .. victimSrv) or {}
+            if #accts > 0 then
+                local pick = accts[math.random(1, #accts)]
+                MH.DB.Query("INSERT INTO mh_hacked_banks (owner_sid, bank_server_id, acc_num, acc_pass, stamp) VALUES (" ..
+                    MH.DB.Esc(row.creator_sid) .. ", " .. victimSrv .. ", " ..
+                    MH.DB.Esc(pick.acc_num) .. ", " .. MH.DB.Esc(pick.acc_pass) .. ", " .. now() .. ")")
+                MH.State.AppendLog(attackerSrv, "Captured bank credential: " .. pick.acc_num)
+                MH.State.CheckMissionProgress(row.creator_sid, "bank_credential", { target_server = victimSrv })
+            end
+        end
     end
     if tonumber(victim.is_npc) == 1 and victim.name == "MSA" then
         MH.State.CheckEmployersMSAHit(row.creator_sid)
-    end
-    if tonumber(victim.is_npc) == 1 and string.find(string.lower(victim.name or ""), "bank") then
-        local accts = MH.DB.Query("SELECT acc_num, acc_pass FROM mh_banks WHERE bank_npc = " .. victimSrv) or {}
-        if #accts > 0 then
-            local pick = accts[math.random(1, #accts)]
-            MH.DB.Query("INSERT INTO mh_hacked_banks (owner_sid, bank_server_id, acc_num, acc_pass, stamp) VALUES (" ..
-                MH.DB.Esc(row.creator_sid) .. ", " .. victimSrv .. ", " ..
-                MH.DB.Esc(pick.acc_num) .. ", " .. MH.DB.Esc(pick.acc_pass) .. ", " .. now() .. ")")
-            MH.State.AppendLog(attackerSrv, "Captured bank credential: " .. pick.acc_num)
-            MH.State.CheckMissionProgress(row.creator_sid, "bank_credential", { target_server = victimSrv })
-        end
     end
 end
 
