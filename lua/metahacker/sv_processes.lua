@@ -71,11 +71,24 @@ local function ram_cost_for(action)
     return tonumber(RAM_COSTS[action]) or 50
 end
 
-local function active_cpu_procs_for_creator(sid)
-    local n = tonumber(MH.DB.QueryValue(
-        "SELECT COUNT(*) FROM mh_processes WHERE creator_sid = " .. MH.DB.Esc(sid) ..
-        " AND paused_remaining = 0 AND cpu_usage > 0")) or 0
-    return n
+local function is_net_bound(cpu, netU)
+    return (tonumber(netU) or 0) > (tonumber(cpu) or 0)
+end
+
+local function active_pool_counts_for_creator(sid)
+    local rows = MH.DB.Query(
+        "SELECT cpu_usage, net_usage FROM mh_processes WHERE creator_sid = " .. MH.DB.Esc(sid) ..
+        " AND paused_remaining = 0 AND (cpu_usage > 0 OR net_usage > 0)") or {}
+    local cpuN = 0
+    local netN = 0
+    for _, r in ipairs(rows) do
+        if is_net_bound(r.cpu_usage, r.net_usage) then
+            netN = netN + 1
+        else
+            cpuN = cpuN + 1
+        end
+    end
+    return cpuN, netN
 end
 
 local function proc_ram_used_mb(srvId)
@@ -85,14 +98,18 @@ local function proc_ram_used_mb(srvId)
 end
 
 local function reschedule_creator(sid)
-    local rows = MH.DB.Query("SELECT id, time_start, ideal_duration FROM mh_processes WHERE creator_sid = " ..
-        MH.DB.Esc(sid) .. " AND paused_remaining = 0 AND cpu_usage > 0") or {}
-    local n = #rows
-    if n == 0 then return end
+    local rows = MH.DB.Query("SELECT id, time_start, ideal_duration, cpu_usage, net_usage FROM mh_processes WHERE creator_sid = " ..
+        MH.DB.Esc(sid) .. " AND paused_remaining = 0 AND (cpu_usage > 0 OR net_usage > 0)") or {}
+    if #rows == 0 then return end
+    local cpuN, netN = 0, 0
+    for _, r in ipairs(rows) do
+        if is_net_bound(r.cpu_usage, r.net_usage) then netN = netN + 1 else cpuN = cpuN + 1 end
+    end
     local nowT = now()
     for _, r in ipairs(rows) do
         local ts = tonumber(r.time_start) or nowT
         local ideal = tonumber(r.ideal_duration) or 0
+        local n = is_net_bound(r.cpu_usage, r.net_usage) and netN or cpuN
         local newEnd = ts + ideal * n
         if newEnd < nowT + 1 then newEnd = nowT + 1 end
         MH.DB.Query("UPDATE mh_processes SET time_end = " .. newEnd ..
@@ -121,7 +138,15 @@ function MH.Proc.Spawn(opts)
         end
     end
     local start = now()
-    local newN = (cpu > 0 and sid ~= "") and (active_cpu_procs_for_creator(sid) + 1) or 1
+    local newN = 1
+    if sid ~= "" and (cpu > 0 or netU > 0) then
+        local cpuN, netN = active_pool_counts_for_creator(sid)
+        if is_net_bound(cpu, netU) then
+            newN = netN + 1
+        else
+            newN = cpuN + 1
+        end
+    end
     local tentativeEnd = start + ideal * newN
     MH.DB.Query("INSERT INTO mh_processes (creator_sid, victim_server, local_server, action, soft_id, info, time_start, time_end, cpu_usage, net_usage, ideal_duration, ram_usage) VALUES (" ..
         MH.DB.Esc(opts.creator_sid) .. ", " ..
@@ -137,7 +162,7 @@ function MH.Proc.Spawn(opts)
         ideal .. ", " ..
         ramNeed .. ")")
     local pid = tonumber(MH.DB.QueryValue("SELECT last_insert_rowid()"))
-    if cpu > 0 and sid ~= "" then reschedule_creator(sid) end
+    if sid ~= "" and (cpu > 0 or netU > 0) then reschedule_creator(sid) end
     return pid
 end
 
@@ -558,7 +583,7 @@ function MH.Proc.Tick()
             if not ok then MH.Log.error("proc", row.action or "?", tostring(err)) end
         end
         MH.DB.Query("DELETE FROM mh_processes WHERE id = " .. tonumber(row.id))
-        if (tonumber(row.cpu_usage) or 0) > 0 and row.creator_sid and row.creator_sid ~= "" then
+        if ((tonumber(row.cpu_usage) or 0) > 0 or (tonumber(row.net_usage) or 0) > 0) and row.creator_sid and row.creator_sid ~= "" then
             touchedCreators[row.creator_sid] = true
         end
         local ply = player.GetBySteamID64(row.creator_sid or "")
@@ -573,7 +598,8 @@ function MH.Proc.Pause(pid)
     local remaining = math.max(1, tonumber(row.time_end or 0) - now())
     MH.DB.Query("UPDATE mh_processes SET paused_remaining = " .. remaining ..
         " WHERE id = " .. tonumber(pid))
-    if (tonumber(row.cpu_usage) or 0) > 0 and row.creator_sid and row.creator_sid ~= "" then
+    if ((tonumber(row.cpu_usage) or 0) > 0 or (tonumber(row.net_usage) or 0) > 0) and
+        row.creator_sid and row.creator_sid ~= "" then
         reschedule_creator(row.creator_sid)
     end
     return true
@@ -585,16 +611,18 @@ function MH.Proc.Resume(pid)
     local newEnd = now() + tonumber(row.paused_remaining)
     MH.DB.Query("UPDATE mh_processes SET paused_remaining = 0, time_end = " .. newEnd ..
         " WHERE id = " .. tonumber(pid))
-    if (tonumber(row.cpu_usage) or 0) > 0 and row.creator_sid and row.creator_sid ~= "" then
+    if ((tonumber(row.cpu_usage) or 0) > 0 or (tonumber(row.net_usage) or 0) > 0) and
+        row.creator_sid and row.creator_sid ~= "" then
         reschedule_creator(row.creator_sid)
     end
     return true
 end
 
 function MH.Proc.Cancel(pid)
-    local row = MH.DB.QueryRow("SELECT creator_sid, cpu_usage FROM mh_processes WHERE id = " .. tonumber(pid))
+    local row = MH.DB.QueryRow("SELECT creator_sid, cpu_usage, net_usage FROM mh_processes WHERE id = " .. tonumber(pid))
     MH.DB.Query("DELETE FROM mh_processes WHERE id = " .. tonumber(pid))
-    if row and (tonumber(row.cpu_usage) or 0) > 0 and row.creator_sid and row.creator_sid ~= "" then
+    if row and ((tonumber(row.cpu_usage) or 0) > 0 or (tonumber(row.net_usage) or 0) > 0) and
+        row.creator_sid and row.creator_sid ~= "" then
         reschedule_creator(row.creator_sid)
     end
 end
@@ -608,7 +636,8 @@ function MH.Proc.Complete(pid)
         if not ok then MH.Log.error("proc", row.action or "?", tostring(err)) end
     end
     MH.DB.Query("DELETE FROM mh_processes WHERE id = " .. tonumber(pid))
-    if (tonumber(row.cpu_usage) or 0) > 0 and row.creator_sid and row.creator_sid ~= "" then
+    if ((tonumber(row.cpu_usage) or 0) > 0 or (tonumber(row.net_usage) or 0) > 0) and
+        row.creator_sid and row.creator_sid ~= "" then
         reschedule_creator(row.creator_sid)
     end
     local ply = player.GetBySteamID64(row.creator_sid or "")
