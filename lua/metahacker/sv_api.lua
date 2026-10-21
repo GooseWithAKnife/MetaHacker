@@ -1192,6 +1192,8 @@ end
 
 local XHD_PRICES = { 100, 1000, 10000, 50000, 150000, 300000, 500000 }
 Handlers.xhd_buy = function(ply, args)
+    send_notify(ply, "error", "External HD is not available yet")
+    if true then return end
     local srv = owned_server(ply, tonumber(args.server_id or 0))
     if not srv then send_notify(ply, "error", "Not your server") return end
     local owned = tonumber(MH.DB.QueryValue("SELECT COUNT(*) FROM mh_xhds WHERE server_id = " .. tonumber(srv.id))) or 0

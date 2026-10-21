@@ -973,14 +973,12 @@ Tabs["Hardware"] = function(container)
                 end)
             end
         end
-        local XHD_PRICES = { 100, 1000, 10000, 50000, 150000, 300000, 500000 }
-        local nextXhdPrice = XHD_PRICES[math.min(xhdCount + 1, #XHD_PRICES)]
         local buyXhd = vgui.Create("DButton", container)
-        buyXhd:SetText("Buy external HD   $" .. nextXhdPrice)
+        buyXhd:SetText("Buy external HD   (coming soon)")
         buyXhd:Dock(TOP)
         buyXhd:DockMargin(0, 12, 0, 0)
         buyXhd:SetTall(32)
-        buyXhd.DoClick = function() send_cmd("xhd_buy", { server_id = srv.id }) end
+        buyXhd:SetEnabled(false)
     end
 end
 
