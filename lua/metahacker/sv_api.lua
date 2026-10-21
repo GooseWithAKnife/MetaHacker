@@ -173,6 +173,8 @@ Handlers.research = function(ply, args)
         send_notify(ply, "error", "Research costs $" .. cost)
         return
     end
+    local ramOk, ramErr = MH.Proc.CheckRam(srv.id, "research")
+    if not ramOk then send_notify(ply, "error", ramErr) return end
     MH.State.SpendCash(sid, cost,
         "Research: " .. MH.Data.SoftName(softType) .. " v" .. MH.Data.DotVersion(curV + 1), srv.id)
     local nextV = curV + 1
@@ -312,6 +314,8 @@ Handlers.crack_ip = function(ply, args)
         end
         dur = MH.Data.Dur.crack(attVer, defVer)
     end
+    local ramOk, ramErr = MH.Proc.CheckRam(srv.id, "crack")
+    if not ramOk then send_notify(ply, "error", ramErr) return end
     MH.Proc.Spawn({
         creator_sid = ply:SteamID64(),
         local_server = srv.id, victim_server = tonumber(target.id),
@@ -587,23 +591,16 @@ Handlers.virus_collect = function(ply, args)
     send_snapshot(ply, 0)
 end
 
-local MISSION_TYPES_EXPLOIT = {
-    { mtype = 50, title = "Steal classified data", prizeMin = 1000000, prizeMax = 1000000,
-      briefing = "The payoff of a lifetime. A sealed data set on a hardened target. Hack in, pull the archive, come back with it intact. This is not a drill.\n\nSteps:\n1. The target is MSA, if it exists in your discovered IPs. Scan it, Bruteforce it.\n2. Once logged in, download any file from the target.\n3. Press Complete here when the archive is on your rig.\n\nNo retries if you get burned. Choose the moment carefully." },
-    { mtype = 51, title = "Exploit", prizeMin = 1000000, prizeMax = 1000000,
-      briefing = "A million-dollar contract. The client wants a sanctioned exploit against a government-grade firewall.\n\nSteps:\n1. Use an FTP or SSH Exploit soft against a target your Scan has flagged VULNERABLE.\n2. Log in, delete at least one file, log out.\n3. Press Complete.\n\nUse the Scan output on the Internet tab to pick the right target." },
-}
-
 local MISSION_TYPES = {
-    { mtype = 1, title = "Delete a software",   prizeMin = 300,  prizeMax = 2500,
+    { mtype = 1, title = "Delete a software",   prizeMin = 150,  prizeMax = 350,
       briefing = "A client needs a specific piece of software gone from a target server.\n\nSteps:\n1. Open the Internet tab and point your browser at the target IP.\n2. If you do not have the root password, Bruteforce the target until it is yours.\n3. Log in and open the Softwares panel on the remote machine.\n4. Delete the file.\n\nWhen it is gone, come back to Missions and press Complete to collect the prize." },
-    { mtype = 2, title = "Steal a software",    prizeMin = 500,  prizeMax = 4000,
+    { mtype = 2, title = "Steal a software",    prizeMin = 250,  prizeMax = 450,
       briefing = "The client wants a copy of a target's software, intact.\n\nSteps:\n1. Hack the target server from the Internet tab.\n2. Once logged in, locate the file on the remote disk.\n3. Download it to your local disk.\n\nWhen the file is on your rig, press Complete on this mission." },
-    { mtype = 3, title = "Check bank status",   prizeMin = 400,  prizeMax = 3500,
+    { mtype = 3, title = "Check bank status",   prizeMin = 500,  prizeMax = 750,
       briefing = "The client wants to know how much money sits in a particular account at the target bank.\n\nSteps:\n1. Hack the target bank's server from the Internet tab.\n2. The crack will capture one of its account credentials into your Hacked Database.\n3. Open the account overview and read the balance.\n\nPress Complete to report back." },
-    { mtype = 4, title = "Transfer money",      prizeMin = 600,  prizeMax = 6000,
+    { mtype = 4, title = "Transfer money",      prizeMin = 1000, prizeMax = 1500,
       briefing = "Divert funds out of the target and into your own wallet.\n\nSteps:\n1. Hack the target bank.\n2. Captured credentials land in your Hacked Database under Bank Accounts.\n3. Siphon the balance to your wallet.\n\nPress Complete when the money has moved. Expect a Sourcenet alert if the amount is big." },
-    { mtype = 5, title = "DDoS a server",       prizeMin = 1000, prizeMax = 10000,
+    { mtype = 5, title = "DDoS a server",       prizeMin = 3000, prizeMax = 5000,
       briefing = "The client wants a competitor's servers knocked offline. Hit the target with a DDoS until its HP drops to zero.\n\nSteps:\n1. Earn DDoS Security (cert 5) and plant three or more active DDoS viruses on servers you own.\n2. Open Hacked Database -> DDoS and target the mission server.\n3. Each DDoS run chips at the target's HP. Keep hammering it until it reads offline.\n\nPress Complete once the server is down." },
 }
 MH.MissionTypes = MISSION_TYPES
@@ -1690,6 +1687,8 @@ Handlers.pwd_reset = function(ply, args)
         send_notify(ply, "error", "Not enough cash. Password reset costs $" .. price)
         return
     end
+    local ramOk, ramErr = MH.Proc.CheckRam(srv.id, "RESET_PWD")
+    if not ramOk then send_notify(ply, "error", ramErr) return end
     if price > 0 then MH.State.SpendCash(sid, price, "Root password reset", srv.id) end
     MH.Proc.Spawn({
         creator_sid = sid, local_server = srv.id, victim_server = 0,
@@ -1877,6 +1876,8 @@ Handlers.ip_reset = function(ply, args)
         send_notify(ply, "error", "Not enough cash. IP reset costs $" .. price)
         return
     end
+    local ramOk, ramErr = MH.Proc.CheckRam(srv.id, "RESET_IP")
+    if not ramOk then send_notify(ply, "error", ramErr) return end
     if price > 0 then MH.State.SpendCash(sid, price, "IP reset", srv.id) end
     MH.Proc.Spawn({
         creator_sid = sid, local_server = srv.id, victim_server = 0,
@@ -1942,9 +1943,7 @@ function MH.MissionBoardRegen()
         local seen = {}
         while generated < target and attempts < attemptCap do
             attempts = attempts + 1
-            local pool = MISSION_TYPES
-            if level == 3 and math.random(1, 25) == 1 then pool = MISSION_TYPES_EXPLOIT end
-            local pick = pool[math.random(1, #pool)]
+            local pick = MISSION_TYPES[math.random(1, #MISSION_TYPES)]
             local prize = math.floor(math.random(pick.prizeMin, pick.prizeMax) * mult)
             local tid = pick_mission_target(pick.mtype)
             if tid > 0 then

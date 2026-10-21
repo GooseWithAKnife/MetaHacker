@@ -49,7 +49,9 @@ local SCHEMA = {
     time_start INTEGER,
     time_end INTEGER,
     cpu_usage INTEGER,
-    net_usage INTEGER
+    net_usage INTEGER,
+    ideal_duration INTEGER DEFAULT 0,
+    ram_usage INTEGER DEFAULT 0
 );]],
 [[CREATE TABLE IF NOT EXISTS mh_banks (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -256,6 +258,10 @@ local MIGRATIONS = {
     "ALTER TABLE mh_players ADD COLUMN last_collect_visited INTEGER DEFAULT 0",
     "ALTER TABLE mh_players ADD COLUMN last_collect_acc TEXT",
     "ALTER TABLE mh_players ADD COLUMN last_collect_json TEXT",
+    "ALTER TABLE mh_processes ADD COLUMN ideal_duration INTEGER DEFAULT 0",
+    "ALTER TABLE mh_processes ADD COLUMN ram_usage INTEGER DEFAULT 0",
+    "UPDATE mh_processes SET ideal_duration = (time_end - time_start) WHERE ideal_duration = 0 OR ideal_duration IS NULL",
+    "DELETE FROM mh_missions WHERE mtype IN (50, 51) AND status = 0 AND (assigned_sid IS NULL OR assigned_sid = '')",
 }
 
 function MH.DB.Init()

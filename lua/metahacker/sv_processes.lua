@@ -46,20 +46,115 @@ function MH.Proc.ResearchDuration(cost, mhz)
     return math.max(10, math.floor(cost / math.max(1, mhz)))
 end
 
+local RAM_COSTS = {
+    research = 100,
+    scan = 30,
+    crack = 150,
+    DDOS = 200,
+    DOOM_SPREAD = 250,
+    AV_SCAN = 100,
+    BANK_ACC_CRACK = 150,
+    SOFT_INSTALL = 50,
+    SOFT_UNINSTALL = 50,
+    SOFT_DELETE = 30,
+    SOFT_DOWNLOAD = 60,
+    SOFT_UPLOAD = 60,
+    SOFT_HIDE = 50,
+    SOFT_SEEK = 50,
+    E_LOG = 20,
+    D_LOG = 20,
+    RESET_PWD = 20,
+    RESET_IP = 20,
+}
+
+local function ram_cost_for(action)
+    return tonumber(RAM_COSTS[action]) or 50
+end
+
+local function active_cpu_procs_for_creator(sid)
+    local n = tonumber(MH.DB.QueryValue(
+        "SELECT COUNT(*) FROM mh_processes WHERE creator_sid = " .. MH.DB.Esc(sid) ..
+        " AND paused_remaining = 0 AND cpu_usage > 0")) or 0
+    return n
+end
+
+local function proc_ram_used_mb(srvId)
+    return tonumber(MH.DB.QueryValue(
+        "SELECT COALESCE(SUM(ram_usage),0) FROM mh_processes WHERE local_server = " ..
+        tonumber(srvId or 0) .. " AND paused_remaining = 0")) or 0
+end
+
+local function reschedule_creator(sid)
+    local rows = MH.DB.Query("SELECT id, time_start, ideal_duration FROM mh_processes WHERE creator_sid = " ..
+        MH.DB.Esc(sid) .. " AND paused_remaining = 0 AND cpu_usage > 0") or {}
+    local n = #rows
+    if n == 0 then return end
+    local nowT = now()
+    for _, r in ipairs(rows) do
+        local ts = tonumber(r.time_start) or nowT
+        local ideal = tonumber(r.ideal_duration) or 0
+        local newEnd = ts + ideal * n
+        if newEnd < nowT + 1 then newEnd = nowT + 1 end
+        MH.DB.Query("UPDATE mh_processes SET time_end = " .. newEnd ..
+            " WHERE id = " .. tonumber(r.id))
+    end
+end
+
 function MH.Proc.Spawn(opts)
+    local sid = tostring(opts.creator_sid or "")
+    local localSrv = tonumber(opts.local_server or 0) or 0
+    local action = tostring(opts.action or "")
+    local ideal = tonumber(opts.duration or 10) or 10
+    local cpu = tonumber(opts.cpu_usage or 100) or 100
+    local netU = tonumber(opts.net_usage or 0) or 0
+    local ramNeed = tonumber(opts.ram_usage) or ram_cost_for(action)
+    if ramNeed > 0 and localSrv > 0 then
+        local cap = ram_cap_mb(localSrv)
+        local installedRam = ram_used_mb(localSrv)
+        local procRam = proc_ram_used_mb(localSrv)
+        local free = cap - installedRam - procRam
+        if ramNeed > free then
+            notify_creator(sid, "error",
+                "Not enough RAM to start " .. action ..
+                " (need " .. ramNeed .. " MB, free " .. math.max(0, free) .. " MB)")
+            return nil
+        end
+    end
     local start = now()
-    MH.DB.Query("INSERT INTO mh_processes (creator_sid, victim_server, local_server, action, soft_id, info, time_start, time_end, cpu_usage, net_usage) VALUES (" ..
+    local newN = (cpu > 0 and sid ~= "") and (active_cpu_procs_for_creator(sid) + 1) or 1
+    local tentativeEnd = start + ideal * newN
+    MH.DB.Query("INSERT INTO mh_processes (creator_sid, victim_server, local_server, action, soft_id, info, time_start, time_end, cpu_usage, net_usage, ideal_duration, ram_usage) VALUES (" ..
         MH.DB.Esc(opts.creator_sid) .. ", " ..
         tonumber(opts.victim_server or 0) .. ", " ..
-        tonumber(opts.local_server or 0) .. ", " ..
-        MH.DB.Esc(opts.action) .. ", " ..
+        localSrv .. ", " ..
+        MH.DB.Esc(action) .. ", " ..
         tonumber(opts.soft_id or 0) .. ", " ..
         MH.DB.Esc(opts.info or "") .. ", " ..
         start .. ", " ..
-        (start + tonumber(opts.duration or 10)) .. ", " ..
-        tonumber(opts.cpu_usage or 100) .. ", " ..
-        tonumber(opts.net_usage or 0) .. ")")
-    return tonumber(MH.DB.QueryValue("SELECT last_insert_rowid()"))
+        tentativeEnd .. ", " ..
+        cpu .. ", " ..
+        netU .. ", " ..
+        ideal .. ", " ..
+        ramNeed .. ")")
+    local pid = tonumber(MH.DB.QueryValue("SELECT last_insert_rowid()"))
+    if cpu > 0 and sid ~= "" then reschedule_creator(sid) end
+    return pid
+end
+
+MH.Proc._RescheduleCreator = reschedule_creator
+
+function MH.Proc.CheckRam(localSrv, action, override)
+    localSrv = tonumber(localSrv or 0) or 0
+    if localSrv <= 0 then return true end
+    local need = tonumber(override) or ram_cost_for(action)
+    if need <= 0 then return true end
+    local cap = ram_cap_mb(localSrv)
+    local free = cap - ram_used_mb(localSrv) - proc_ram_used_mb(localSrv)
+    if need > free then
+        return false, "Not enough RAM (need " .. need ..
+            " MB, free " .. math.max(0, free) .. " MB)"
+    end
+    return true
 end
 
 local Completers = {}
@@ -455,6 +550,7 @@ function MH.Proc.Tick()
     local nowT = now()
     local rows = MH.DB.Query("SELECT * FROM mh_processes WHERE time_end <= " .. nowT ..
         " AND paused_remaining = 0") or {}
+    local touchedCreators = {}
     for _, row in ipairs(rows) do
         local fn = Completers[row.action]
         if fn then
@@ -462,9 +558,13 @@ function MH.Proc.Tick()
             if not ok then MH.Log.error("proc", row.action or "?", tostring(err)) end
         end
         MH.DB.Query("DELETE FROM mh_processes WHERE id = " .. tonumber(row.id))
+        if (tonumber(row.cpu_usage) or 0) > 0 and row.creator_sid and row.creator_sid ~= "" then
+            touchedCreators[row.creator_sid] = true
+        end
         local ply = player.GetBySteamID64(row.creator_sid or "")
         if IsValid(ply) then MH.Api.SendSnapshot(ply, 0) end
     end
+    for sid in pairs(touchedCreators) do reschedule_creator(sid) end
 end
 
 function MH.Proc.Pause(pid)
@@ -473,6 +573,9 @@ function MH.Proc.Pause(pid)
     local remaining = math.max(1, tonumber(row.time_end or 0) - now())
     MH.DB.Query("UPDATE mh_processes SET paused_remaining = " .. remaining ..
         " WHERE id = " .. tonumber(pid))
+    if (tonumber(row.cpu_usage) or 0) > 0 and row.creator_sid and row.creator_sid ~= "" then
+        reschedule_creator(row.creator_sid)
+    end
     return true
 end
 
@@ -482,11 +585,18 @@ function MH.Proc.Resume(pid)
     local newEnd = now() + tonumber(row.paused_remaining)
     MH.DB.Query("UPDATE mh_processes SET paused_remaining = 0, time_end = " .. newEnd ..
         " WHERE id = " .. tonumber(pid))
+    if (tonumber(row.cpu_usage) or 0) > 0 and row.creator_sid and row.creator_sid ~= "" then
+        reschedule_creator(row.creator_sid)
+    end
     return true
 end
 
 function MH.Proc.Cancel(pid)
+    local row = MH.DB.QueryRow("SELECT creator_sid, cpu_usage FROM mh_processes WHERE id = " .. tonumber(pid))
     MH.DB.Query("DELETE FROM mh_processes WHERE id = " .. tonumber(pid))
+    if row and (tonumber(row.cpu_usage) or 0) > 0 and row.creator_sid and row.creator_sid ~= "" then
+        reschedule_creator(row.creator_sid)
+    end
 end
 
 function MH.Proc.Complete(pid)
@@ -498,6 +608,9 @@ function MH.Proc.Complete(pid)
         if not ok then MH.Log.error("proc", row.action or "?", tostring(err)) end
     end
     MH.DB.Query("DELETE FROM mh_processes WHERE id = " .. tonumber(pid))
+    if (tonumber(row.cpu_usage) or 0) > 0 and row.creator_sid and row.creator_sid ~= "" then
+        reschedule_creator(row.creator_sid)
+    end
     local ply = player.GetBySteamID64(row.creator_sid or "")
     if IsValid(ply) then MH.Api.SendSnapshot(ply, 0) end
 end
