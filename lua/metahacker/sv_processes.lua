@@ -321,7 +321,9 @@ Completers.SOFT_DELETE = function(row)
     log_soft_action(row, "Deleted", soft)
     MH.DB.Query("DELETE FROM mh_software WHERE id = " .. tonumber(row.soft_id or 0))
     if row.creator_sid and row.creator_sid ~= "" then
-        MH.State.CheckSourcenetSoftwareDeleted(row.creator_sid)
+        if not row_is_local(row) then
+            MH.State.CheckSourcenetSoftwareDeleted(row.creator_sid)
+        end
         if targetServer > 0 then
             MH.State.CheckMissionProgress(row.creator_sid, "soft_delete",
                 { target_server = targetServer, soft_name = softName })
