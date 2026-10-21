@@ -1895,6 +1895,7 @@ Tabs["Internet"] = function(container)
     local tabSet = {}
     for _, n in ipairs(tabList) do tabSet[n] = true end
     if not inet.authed then
+        MH.OS.LastAuthedIP = nil
         local defaultTab = bankSessActive and "Account overview" or "Index"
         MH.OS.InternetMainTab = MH.OS.InternetMainTab or defaultTab
         if not tabSet[MH.OS.InternetMainTab] then MH.OS.InternetMainTab = defaultTab end
@@ -3739,6 +3740,10 @@ Tabs["Internet"] = function(container)
     end
     local validView = { Logs = true, Softwares = true, Banking = showBanking }
     if not validView[MH.OS.InternetView] then
+        MH.OS.InternetView = "Logs"
+    end
+    if MH.OS.LastAuthedIP ~= tostring(inet.ip) then
+        MH.OS.LastAuthedIP = tostring(inet.ip)
         MH.OS.InternetView = "Logs"
     end
     if inet.is_puzzle and MH.OS.PuzzleAutoSwitch ~= tostring(inet.ip) then
