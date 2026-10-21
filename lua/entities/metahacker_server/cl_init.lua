@@ -159,12 +159,11 @@ function ENT:MH_GetRT()
         self.MH_RT = GetRenderTarget("mh_server_rt_" .. idx, RT_SIZE, RT_SIZE)
         self.MH_RTMatName = "mh_server_rtmat_" .. idx
         self.MH_RTMat = CreateMaterial(self.MH_RTMatName, "UnlitGeneric", {
-            ["$basetexture"] = "vgui/white",
+            ["$basetexture"] = self.MH_RT:GetName(),
             ["$model"] = 1,
             ["$nolod"] = 1,
             ["$ignorez"] = 0,
         })
-        self.MH_RTMat:SetTexture("$basetexture", self.MH_RT)
     end
     return self.MH_RT, self.MH_RTMat
 end

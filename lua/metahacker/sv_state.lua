@@ -84,6 +84,50 @@ function MH.State.CheckFBIThresholds(sid)
     end
 end
 
+local FBI_WANTED_TIERS = {
+    { min_exp = 50000, bounty = 100000, reason = "Priority target" },
+    { min_exp = 10000, bounty = 25000,  reason = "Wanted: major bounty" },
+    { min_exp = 2500,  bounty = 5000,   reason = "Wanted: minor bounty" },
+}
+
+function MH.State.MostWantedList()
+    local rows = MH.DB.Query(
+        "SELECT m.to_sid, p.exp, p.nick, p.last_ip_reset " ..
+        "FROM mh_mail m INNER JOIN mh_players p ON p.sid64 = m.to_sid " ..
+        "WHERE m.from_sid = 'FBI' AND " ..
+        "(m.subject LIKE 'Wanted:%' OR m.subject = 'Priority target') " ..
+        "AND m.stamp > COALESCE(p.last_ip_reset, 0) " ..
+        "GROUP BY m.to_sid") or {}
+    local out = {}
+    for _, r in ipairs(rows) do
+        local sid = tostring(r.to_sid or "")
+        if sid ~= "" then
+            local exp = tonumber(r.exp or 0) or 0
+            local tier
+            for _, t in ipairs(FBI_WANTED_TIERS) do
+                if exp >= t.min_exp then tier = t break end
+            end
+            if tier then
+                local srv = MH.DB.QueryRow(
+                    "SELECT ip FROM mh_servers WHERE owner_sid = " .. MH.DB.Esc(sid) ..
+                    " ORDER BY id ASC LIMIT 1")
+                if srv and srv.ip then
+                    out[#out + 1] = {
+                        sid = sid,
+                        nick = tostring(r.nick or ""),
+                        ip = tostring(srv.ip),
+                        bounty = tier.bounty,
+                        reason = tier.reason,
+                        exp = exp,
+                    }
+                end
+            end
+        end
+    end
+    table.sort(out, function(a, b) return (a.bounty or 0) > (b.bounty or 0) end)
+    return out
+end
+
 function MH.State.CheckSourcenetAlert(sid, amount)
     MH.State.SendSystemMailOnce(sid, "Sourcenet",
         "Transfer activity flagged",
@@ -95,18 +139,21 @@ function MH.State.CheckSourcenetPasswordTamper(sid)
     MH.State.SendSystemMailOnce(sid, "Sourcenet",
         "Credential tampering detected",
         "You changed credentials on an account that is not yours. The old owner was notified. The incident is on file.\n\n- Sourcenet Compliance")
+    MH.State.CheckFBIThresholds(sid)
 end
 
 function MH.State.CheckSourcenetAccountOpened(sid)
     MH.State.SendSystemMailOnce(sid, "Sourcenet",
         "Account activity noted",
         "A new bank account was opened in your name. Compliance has catalogued the event. Future deposits above the audit threshold will be reviewed, as will anomalies in the pattern of your deposits.\n\n- Sourcenet Compliance")
+    MH.State.CheckFBIThresholds(sid)
 end
 
 function MH.State.CheckSourcenetSoftwareDeleted(sid)
     MH.State.SendSystemMailOnce(sid, "Sourcenet",
         "File deletion flagged",
         "You have deleted a software file on a machine we were monitoring. The deletion is irreversible on our side as well. Investigators have been notified. Think twice before the next one.\n\n- Sourcenet Compliance")
+    MH.State.CheckFBIThresholds(sid)
 end
 
 function MH.State.CheckEmployersMSAHit(sid)
@@ -1560,6 +1607,7 @@ function MH.State.SnapshotFor(ply)
         admin_stats = admin_stats,
         admin_abuse_log = admin_abuse_log,
         admin_mail_counts = admin_mail_counts,
+        fbi_wanted = MH.State.MostWantedList(),
     }
 end
 

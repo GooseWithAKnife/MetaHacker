@@ -738,7 +738,37 @@ Tabs["Home"] = function(container)
     bottomRow.Paint = function() end
     local fbi = card(bottomRow, "FBI Wanted List")
     fbi:Dock(FILL)
-    kv_row(fbi, "", "No wanted IPs ATM")
+    local fbiWanted = MH.OS.State.fbi_wanted or {}
+    if #fbiWanted == 0 then
+        kv_row(fbi, "", "No wanted IPs ATM")
+    else
+        local scroll = vgui.Create("DScrollPanel", fbi)
+        scroll:Dock(FILL)
+        scroll:DockMargin(10, 4, 10, 6)
+        for _, w in ipairs(fbiWanted) do
+            local row = vgui.Create("DPanel", scroll)
+            row:Dock(TOP)
+            row:SetTall(18)
+            row.Paint = function() end
+            local ipLbl = vgui.Create("DLabel", row)
+            ipLbl:Dock(LEFT)
+            ipLbl:SetWide(140)
+            ipLbl:SetDark(true)
+            ipLbl:SetFont("DermaDefaultBold")
+            ipLbl:SetText(tostring(w.ip or "?"))
+            local bountyLbl = vgui.Create("DLabel", row)
+            bountyLbl:Dock(LEFT)
+            bountyLbl:SetWide(100)
+            bountyLbl:SetDark(false)
+            bountyLbl:SetTextColor(Color(60, 160, 70))
+            bountyLbl:SetFont("DermaDefaultBold")
+            bountyLbl:SetText("$" .. fmt_cash(w.bounty or 0))
+            local reasonLbl = vgui.Create("DLabel", row)
+            reasonLbl:Dock(FILL)
+            reasonLbl:SetDark(true)
+            reasonLbl:SetText(tostring(w.reason or ""))
+        end
+    end
 
     local topUsers, topTitle = card(midRow, "Top 7 users")
     topUsers:Dock(FILL)
@@ -5602,8 +5632,12 @@ Tabs["Mail"] = function(container)
             selected = m
             local party = isInbox and m.from_sid or m.to_sid
             local partyName = resolve_sender_name(party)
+            local partyStr = partyName
+            if not SYSTEM_SENDERS[tostring(party or "")] and tostring(party or "") ~= "" then
+                partyStr = partyName .. " (" .. tostring(party) .. ")"
+            end
             senderInfo:SetText(tostring(m.subject or "(no subject)") ..
-                "\n" .. (isInbox and ("From " .. partyName) or ("To " .. partyName)) ..
+                "\n" .. (isInbox and ("From " .. partyStr) or ("To " .. partyStr)) ..
                 "\n" .. os.date("%Y-%m-%d %H:%M", tonumber(m.stamp or 0)))
             reader:SetText("")
             if reader.SetFontInternal then reader:SetFontInternal("MH_MailBody") end
