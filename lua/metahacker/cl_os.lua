@@ -3530,6 +3530,17 @@ Tabs["Internet"] = function(container)
                 delete   = Color(220, 60, 60),
                 download = Color(90, 200, 90),
             }
+            local UPGRADE_COLOR = Color(90, 200, 90)
+            local localMaxBySoftType = {}
+            for _, mySrv in ipairs(MH.OS.State.servers or {}) do
+                for _, mySoft in ipairs(mySrv.software or {}) do
+                    local mst = tonumber(mySoft.soft_type)
+                    local mv = tonumber(mySoft.soft_version) or 0
+                    if mst and mv > (localMaxBySoftType[mst] or 0) then
+                        localMaxBySoftType[mst] = mv
+                    end
+                end
+            end
             for _, s in ipairs(inet.software or {}) do
                 local meta = MH.Data.Soft[tonumber(s.soft_type or 0)] or {}
                 local row = vgui.Create("DPanel", sub)
@@ -3544,7 +3555,7 @@ Tabs["Internet"] = function(container)
                 end
                 local highlight = missionTargetSoft and tostring(s.soft_name or "") == missionTargetSoft
                     and HIGHLIGHT_COLOR[missionTargetKind] or nil
-                local function rcol(txt, wide, dock, marginL, font)
+                local function rcol(txt, wide, dock, marginL, font, colorOverride)
                     local l = vgui.Create("DLabel", row)
                     l:Dock(dock or LEFT)
                     if wide then l:SetWide(wide) end
@@ -3553,6 +3564,9 @@ Tabs["Internet"] = function(container)
                     if highlight then
                         l:SetDark(false)
                         l:SetTextColor(highlight)
+                    elseif colorOverride then
+                        l:SetDark(false)
+                        l:SetTextColor(colorOverride)
                     else
                         l:SetDark(true)
                     end
@@ -3561,7 +3575,10 @@ Tabs["Internet"] = function(container)
                 local nameFont = tonumber(s.installed) == 1 and "DermaDefaultBold" or nil
                 rcol((s.soft_name or "?") .. (meta.ext or ""), 180, nil, nil, nameFont)
                 rcol(meta.name or ("#" .. tostring(s.soft_type)), 110, nil, 60)
-                rcol("v" .. MH.Data.DotVersion(s.soft_version), 60)
+                local remoteV = tonumber(s.soft_version) or 0
+                local localMaxV = localMaxBySoftType[tonumber(s.soft_type)] or 0
+                local versionColor = (remoteV > localMaxV) and UPGRADE_COLOR or nil
+                rcol("v" .. MH.Data.DotVersion(s.soft_version), 60, nil, nil, nil, versionColor)
                 rcol(tostring(s.soft_size or 0) .. " MB", 60, nil, 30)
                 local actions = vgui.Create("DPanel", row)
                 actions:Dock(RIGHT)
