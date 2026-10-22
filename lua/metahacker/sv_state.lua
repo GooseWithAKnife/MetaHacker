@@ -622,7 +622,7 @@ local SPECIAL_NPCS = {
     { key = "WHOIS2",     name = "Second Whois",   cpu_tier = 8,  ram_tier = 4, hdd_tier = 6, net_tier = 5, hasher_v = 50,  firewall_v = 36 },
     { key = "WHOIS3",     name = "Third Whois",    cpu_tier = 8,  ram_tier = 4, hdd_tier = 6, net_tier = 6, hasher_v = 75,  firewall_v = 50 },
     { key = "WHOIS4",     name = "Fourth Whois",   cpu_tier = 9,  ram_tier = 4, hdd_tier = 6, net_tier = 7, hasher_v = 100, firewall_v = 70 },
-    { key = "EMPLOYERS",  name = "Employers",      cpu_tier = 5,  ram_tier = 3, hdd_tier = 6, net_tier = 4, hasher_v = 20, firewall_v = 17 },
+    { key = "EMPLOYERS",  name = "Employers",      cpu_tier = 8,  ram_tier = 4, hdd_tier = 7, net_tier = 7, hasher_v = 100, firewall_v = 100 },
     { key = "MSA",        name = "MSA",            cpu_tier = 12, ram_tier = 5, hdd_tier = 7, net_tier = 10, hasher_v = 200 },
     { key = "DC",         name = "Download Center",cpu_tier = 8,  ram_tier = 4, hdd_tier = 7, net_tier = 7, hasher_v = 10,  firewall_v = 10 },
     { key = "ISP",        name = "ISP",            cpu_tier = 4,  ram_tier = 3, hdd_tier = 6, net_tier = 8, hasher_v = 20,  firewall_v = 20 },
@@ -1559,7 +1559,7 @@ function MH.State.SnapshotFor(ply)
             "SELECT sid64, nick, abuse_cmd_hits, abuse_mail_hits, last_abuse_stamp, " ..
             "total_cmds, total_mails_sent " ..
             "FROM mh_players " ..
-            "WHERE abuse_cmd_hits > 0 OR abuse_mail_hits > 0 OR total_mails_sent > 20 OR total_cmds > 500 " ..
+            "WHERE abuse_cmd_hits > 0 OR abuse_mail_hits > 0 OR total_mails_sent > 20 " ..
             "ORDER BY (COALESCE(abuse_cmd_hits,0) + COALESCE(abuse_mail_hits,0)) DESC, " ..
             "COALESCE(total_mails_sent,0) DESC, COALESCE(total_cmds,0) DESC " ..
             "LIMIT 30") or {}

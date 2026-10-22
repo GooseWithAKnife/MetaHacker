@@ -6015,7 +6015,7 @@ Tabs["Admin"] = function(container)
     mailUnbanB:Dock(LEFT) mailUnbanB:SetWide(180) mailUnbanB:DockMargin(6, 0, 0, 0)
 
     label(container, "Abuse stats", "DermaDefaultBold"):Dock(TOP)
-    label(container, "Players with rate-limit strikes, high command counts, or high mail volume."):Dock(TOP)
+    label(container, "Players with rate-limit strikes or high mail volume."):Dock(TOP)
     local statsList = vgui.Create("DListView", container)
     statsList:Dock(TOP) statsList:SetTall(220) statsList:DockMargin(0, 4, 0, 0)
     statsList:AddColumn("Nick"):SetFixedWidth(140)
@@ -6134,6 +6134,61 @@ Tabs["Admin"] = function(container)
         send_cmd("admin_refresh_missions", {})
     end)
     refreshMissionsB:Dock(LEFT) refreshMissionsB:SetWide(180) refreshMissionsB:DockMargin(6, 0, 0, 0)
+
+    label(container, "Mass mail", "DermaDefaultBold"):Dock(TOP)
+    label(container, "Send an email to every player. Pick an NPC sender or type a custom name."):Dock(TOP)
+    local mmSenderRow = vgui.Create("DPanel", container)
+    mmSenderRow:Dock(TOP) mmSenderRow:SetTall(30) mmSenderRow:DockMargin(0, 4, 0, 0)
+    local mmSenderCombo = vgui.Create("DComboBox", mmSenderRow)
+    mmSenderCombo:Dock(LEFT) mmSenderCombo:SetWide(220)
+    for key, info in SortedPairs(SYSTEM_SENDERS) do
+        mmSenderCombo:AddChoice(info.name .. " (" .. key .. ")", key)
+    end
+    mmSenderCombo:AddChoice("Custom...", "__custom__")
+    local mmCustomEntry = vgui.Create("DTextEntry", mmSenderRow)
+    mmCustomEntry:Dock(LEFT) mmCustomEntry:SetWide(220) mmCustomEntry:DockMargin(6, 0, 0, 0)
+    mmCustomEntry:SetPlaceholderText("Custom sender name")
+    mmCustomEntry:SetEnabled(false)
+    mmSenderCombo.OnSelect = function(_, _, _, data)
+        mmCustomEntry:SetEnabled(data == "__custom__")
+    end
+    mmSenderCombo:ChooseOptionID(1)
+    local mmSubjectRow = vgui.Create("DPanel", container)
+    mmSubjectRow:Dock(TOP) mmSubjectRow:SetTall(30) mmSubjectRow:DockMargin(0, 4, 0, 0)
+    local mmSubjectEntry = vgui.Create("DTextEntry", mmSubjectRow)
+    mmSubjectEntry:Dock(FILL) mmSubjectEntry:SetPlaceholderText("Subject")
+    local mmBodyEntry = vgui.Create("DTextEntry", container)
+    mmBodyEntry:Dock(TOP) mmBodyEntry:SetTall(120) mmBodyEntry:DockMargin(0, 4, 0, 0)
+    mmBodyEntry:SetMultiline(true)
+    mmBodyEntry:SetPlaceholderText("Body")
+    local mmSendRow = vgui.Create("DPanel", container)
+    mmSendRow:Dock(TOP) mmSendRow:SetTall(30) mmSendRow:DockMargin(0, 4, 0, 0)
+    local mmSendB = button(mmSendRow, "Send mass mail", function()
+        local _, data = mmSenderCombo:GetSelected()
+        local fromKey = tostring(data or "")
+        if fromKey == "__custom__" then
+            fromKey = string.Trim(tostring(mmCustomEntry:GetValue() or ""))
+            if fromKey == "" then
+                MH.OS.ShowNotify("warn", "Enter a custom sender name")
+                return
+            end
+        end
+        local subj = string.Trim(tostring(mmSubjectEntry:GetValue() or ""))
+        local body = tostring(mmBodyEntry:GetValue() or "")
+        if subj == "" or body == "" then
+            MH.OS.ShowNotify("warn", "Subject and body are required")
+            return
+        end
+        Derma_Query("Send mail to every player as \"" .. fromKey .. "\"?",
+            "Mass mail",
+            "Send", function()
+                send_cmd("admin_mass_mail", { from = fromKey, subject = subj, body = body })
+                mmSubjectEntry:SetValue("")
+                mmBodyEntry:SetValue("")
+            end,
+            "Cancel", function() end)
+    end)
+    mmSendB:Dock(LEFT) mmSendB:SetWide(200)
 
     label(container, "Set reputation", "DermaDefaultBold"):Dock(TOP)
     label(container, "Set a player's rep (exp). Enter SteamID64 and new rep value."):Dock(TOP)

@@ -2285,6 +2285,46 @@ Handlers.admin_mail_unban = function(ply, args)
     send_snapshot(ply, 0)
 end
 
+local MASS_MAIL_SYSTEM_SENDERS = {
+    RakTheGoose = true, Employers = true, FBI = true, MSA = true,
+    Sourcenet = true, Social = true, BadgeAdvisor = true,
+}
+
+Handlers.admin_mass_mail = function(ply, args)
+    if not IsValid(ply) or not ply:IsSuperAdmin() then
+        send_notify(ply, "error", "Superadmin only")
+        return
+    end
+    local fromRaw = tostring(args.from or ""):Trim()
+    local subject = tostring(args.subject or ""):Trim()
+    local body = tostring(args.body or "")
+    if fromRaw == "" then send_notify(ply, "error", "Sender required") return end
+    if #fromRaw > 32 then send_notify(ply, "error", "Sender name too long (max 32)") return end
+    if subject == "" then send_notify(ply, "error", "Subject required") return end
+    if #subject > 120 then send_notify(ply, "error", "Subject too long (max 120)") return end
+    if body == "" then send_notify(ply, "error", "Body required") return end
+    if #body > 4000 then send_notify(ply, "error", "Body too long (max 4000)") return end
+    if not MASS_MAIL_SYSTEM_SENDERS[fromRaw] and fromRaw:match("^%d+$") then
+        send_notify(ply, "error", "Custom sender cannot be purely numeric")
+        return
+    end
+    local recipients = MH.DB.Query("SELECT sid64 FROM mh_players") or {}
+    local nowT = os.time()
+    local count = 0
+    for _, r in ipairs(recipients) do
+        MH.DB.Query("INSERT INTO mh_mail (to_sid, from_sid, subject, body, stamp, seen, is_deleted) VALUES (" ..
+            MH.DB.Esc(tostring(r.sid64)) .. ", " .. MH.DB.Esc(fromRaw) .. ", " ..
+            MH.DB.Esc(subject) .. ", " .. MH.DB.Esc(body) .. ", " .. nowT .. ", 0, 0)")
+        count = count + 1
+    end
+    for _, p in ipairs(player.GetAll()) do
+        MH.Api.SendSnapshot(p, 0)
+    end
+    send_notify(ply, "ok", "Mass mail sent to " .. count .. " players as " .. fromRaw)
+    MH.Log.warn("admin", "mass_mail", (ply:Nick() or "?") ..
+        " sent mass mail as " .. fromRaw .. " subject=" .. subject .. " to " .. count)
+end
+
 Handlers.admin_reset_abuse = function(ply, args)
     if not IsValid(ply) or not ply:IsSuperAdmin() then
         send_notify(ply, "error", "Superadmin only")
