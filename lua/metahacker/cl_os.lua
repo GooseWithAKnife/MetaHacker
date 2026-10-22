@@ -187,6 +187,7 @@ local SERVER_TAG_VARIANTS = {
 
 local function get_server_tag(inet)
     local n = tostring(inet and inet.name or "")
+    if inet and inet.is_npc == false then return "Player", "success" end
     if string.find(string.lower(n), "whois") then return "Whois", "warning" end
     if string.find(string.lower(n), "bank") then return "Bank", "inverse" end
     if n == "Bitcoin Market" then return "Bitcoin Market", "inverse" end
