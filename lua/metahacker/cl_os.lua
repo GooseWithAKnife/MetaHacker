@@ -3623,7 +3623,7 @@ Tabs["Internet"] = function(container)
                 elseif isFolder then
                     local isRoot = tostring(inet.auth_user or "root") == "root"
                     if isRoot then
-                        remote_btn("Delete", "delete", nil, nil, "icon16/delete.png")
+                        remote_btn("Delete", "delete", nil, nil, "icon16/bin.png")
                     end
                 else
                     local dl = vgui.Create("DButton", actions)
@@ -3656,7 +3656,7 @@ Tabs["Internet"] = function(container)
                             isHidden and "icon16/magnifier.png" or "icon16/wand.png")
                     end
                     if isRoot then
-                        remote_btn("Delete", "delete", nil, nil, "icon16/delete.png")
+                        remote_btn("Delete", "delete", nil, nil, "icon16/bin.png")
                     end
                 end
                 if isText then
