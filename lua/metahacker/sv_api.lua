@@ -754,7 +754,7 @@ local function require_tool(ply, actorServerId, cfg, action, scope)
     return true
 end
 
-local VIRUS_TYPES = { [8] = true, [9] = true, [10] = true, [11] = true, [12] = true, [20] = true }
+local VIRUS_TYPES = { [8] = true, [9] = true, [10] = true, [12] = true, [20] = true }
 local SYSTEM_TYPES = { [19] = true, [29] = true, [96] = true }
 
 Handlers.soft_action = function(ply, args)
