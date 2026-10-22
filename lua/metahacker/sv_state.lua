@@ -764,6 +764,23 @@ function MH.State.MissionTargetExcludeSQL()
     return "name NOT IN (" .. table.concat(escaped, ",") .. ")"
 end
 
+local MISSION_LEVEL_NPC_RANGE = {
+    [1] = { 1, 15 },
+    [2] = { 16, 24 },
+    [3] = { 21, 24 },
+}
+
+function MH.State.MissionLevelNPCPoolSQL(level)
+    local range = MISSION_LEVEL_NPC_RANGE[tonumber(level or 0) or 0]
+    if not range then return nil end
+    local escaped = {}
+    for i = range[1], math.min(range[2], #NPC_NAMES) do
+        escaped[#escaped + 1] = MH.DB.Esc(NPC_NAMES[i])
+    end
+    if #escaped == 0 then return nil end
+    return "name IN (" .. table.concat(escaped, ",") .. ")"
+end
+
 local NPC_EXTRA_STOCK = {
     ["Bitcoin Market"] = {
         { 20, 100, "miner",       70, 20, 0 },
@@ -1159,39 +1176,8 @@ function MH.State.SeedNPCs()
     local existing = tonumber(MH.DB.QueryValue("SELECT COUNT(*) FROM mh_servers WHERE is_npc = 1")) or 0
     local puzzles = MH.Data.Puzzles or {}
     if existing > 0 then return end
-    local HIRER_LOADOUTS = {
-        { { 2, 14 }, { 1, 17 }, { 13, 15 }, { 4, 13 }, { 14, 11 }, { 20, 15 } },
-        { { 2, 11 }, { 1, 13 }, { 4, 12 }, { 5, 14 }, { 6, 12 }, { 8, 12 }, { 13, 11 } },
-        { { 2, 12 }, { 1, 11 }, { 4, 10 }, { 8, 20 }, { 13, 12 }, { 14, 13 }, { 3, 10 }, { 9, 10 } },
-        { { 2, 13 }, { 1, 14 }, { 4, 17 }, { 8, 12 }, { 13, 12 }, { 3, 10 }, { 9, 13 }, { 6, 12 }, { 5, 11 } },
-        { { 2, 17 }, { 1, 13 }, { 4, 14 }, { 20, 20 }, { 5, 16 }, { 8, 15 } },
-        { { 2, 16 }, { 1, 22 }, { 4, 19 }, { 8, 14 }, { 14, 14 }, { 3, 10 }, { 5, 18 } },
-        { { 2, 22 }, { 1, 20 }, { 4, 10 }, { 14, 17 }, { 13, 16 }, { 3, 10 } },
-        { { 2, 25 }, { 1, 23 }, { 4, 20 }, { 9, 15 }, { 13, 16 }, { 7, 13 } },
-        { { 2, 28 }, { 1, 27 }, { 4, 24 } },
-        { { 2, 20 }, { 1, 27 }, { 4, 17 } },
-        { { 2, 17 }, { 1, 19 }, { 4, 17 }, { 8, 11 } },
-    }
-    local SOFT_NAMES = {
-        [1] = "cracker", [2] = "hasher", [3] = "portscan", [4] = "firewall",
-        [5] = "hider",   [6] = "seeker", [7] = "antivirus", [8] = "spam",
-        [9] = "warez",  [13] = "ftp_exp", [14] = "ssh_exp", [20] = "miner",
-    }
-    for idx, nm in ipairs(NPC_NAMES) do
-        local loadout = HIRER_LOADOUTS[idx] or { { 2, 10 } }
-        local hv = 10
-        for _, s in ipairs(loadout) do if s[1] == 2 then hv = s[2] break end end
-        local srvId = seed_single_npc(nm, 4, 4, 4, 4, nil, hv)
-        MH.DB.Query("DELETE FROM mh_software WHERE server_id = " .. srvId)
-        for _, s in ipairs(loadout) do
-            local t, v = s[1], s[2]
-            local inst = (t == 1 or t == 2 or t == 4) and 1 or 0
-            local sz = math.max(10, math.floor(v * 1.5))
-            local ram = math.max(6, math.floor(v / 2))
-            MH.DB.Query("INSERT INTO mh_software (server_id, soft_type, soft_version, soft_name, soft_size, soft_ram, installed) VALUES (" ..
-                srvId .. ", " .. t .. ", " .. v .. ", " .. MH.DB.Esc(SOFT_NAMES[t] or "soft") ..
-                ", " .. sz .. ", " .. ram .. ", " .. inst .. ")")
-        end
+    for _, nm in ipairs(NPC_NAMES) do
+        local srvId = seed_single_npc(nm, 4, 4, 4, 4, nil, 10)
         if string.find(string.lower(nm), "bank") then
             local acc = tostring(math.random(111111111, 999999999))
             MH.DB.Query("INSERT INTO mh_banks (bank_npc, acc_num, acc_pass, owner_sid, cash, created) VALUES (" ..

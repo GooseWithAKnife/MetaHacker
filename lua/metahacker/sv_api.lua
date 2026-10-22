@@ -1893,15 +1893,20 @@ end
 local MISSION_LEVEL_POOL = { [1] = 50, [2] = 30, [3] = 25 }
 local MISSION_LEVEL_MULT = { [1] = 1.0, [2] = 1.25, [3] = 1.5 }
 
-local function pick_mission_target(mtype)
+local function pick_mission_target(mtype, level)
     local filter
     if mtype == 3 or mtype == 4 then
         filter = " AND LOWER(name) LIKE '%bank%'"
     elseif mtype == 50 then
         filter = " AND name = 'MSA'"
     else
-        filter = " AND " .. MH.State.MissionTargetExcludeSQL() ..
-                 " AND LOWER(name) NOT LIKE '%bank%'"
+        local poolSql = MH.State.MissionLevelNPCPoolSQL(level)
+        if poolSql then
+            filter = " AND " .. poolSql
+        else
+            filter = " AND " .. MH.State.MissionTargetExcludeSQL() ..
+                     " AND LOWER(name) NOT LIKE '%bank%'"
+        end
     end
     return tonumber(MH.DB.QueryValue(
         "SELECT id FROM mh_servers WHERE is_npc = 1" .. filter ..
@@ -1947,7 +1952,7 @@ function MH.MissionBoardRegen()
             attempts = attempts + 1
             local pick = MISSION_TYPES[math.random(1, #MISSION_TYPES)]
             local prize = math.floor(math.random(pick.prizeMin, pick.prizeMax) * mult)
-            local tid = pick_mission_target(pick.mtype)
+            local tid = pick_mission_target(pick.mtype, level)
             if tid > 0 then
                 local key = pick.mtype .. ":" .. tid
                 if not seen[key] then
