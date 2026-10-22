@@ -3577,7 +3577,8 @@ Tabs["Internet"] = function(container)
                 rcol(meta.name or ("#" .. tostring(s.soft_type)), 110, nil, 60)
                 local remoteV = tonumber(s.soft_version) or 0
                 local localMaxV = localMaxBySoftType[tonumber(s.soft_type)] or 0
-                local versionColor = (remoteV > localMaxV) and UPGRADE_COLOR or nil
+                local downloadable = tonumber(s.soft_type) ~= 26
+                local versionColor = (downloadable and remoteV > localMaxV) and UPGRADE_COLOR or nil
                 rcol("v" .. MH.Data.DotVersion(s.soft_version), 60, nil, nil, nil, versionColor)
                 rcol(tostring(s.soft_size or 0) .. " MB", 60, nil, 30)
                 local actions = vgui.Create("DPanel", row)
