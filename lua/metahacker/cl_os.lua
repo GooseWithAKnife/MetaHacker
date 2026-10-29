@@ -5379,7 +5379,7 @@ Tabs["Missions"] = function(container)
             else
                 title = MISSION_TITLES[tonumber(m.mtype)] or ("#" .. tostring(m.mtype))
                 giver = tostring(m.hirer_name or "Employers")
-                targetTxt = tostring(m.target_name or "?") .. "  " .. tostring(m.target_ip or "")
+                targetTxt = tostring(m.target_name or "?")
                 prizeTxt = "$" .. fmt_cash(m.prize)
                 diffTxt = difficulty_for(m.prize)
                 statusTxt = MISSION_STATUS_TXT[tonumber(m.status)] or tostring(m.status)

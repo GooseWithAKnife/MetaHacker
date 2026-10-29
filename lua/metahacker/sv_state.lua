@@ -1486,6 +1486,13 @@ function MH.State.SnapshotFor(ply)
             m.briefing = (tostring(m.briefing or "")) ~= "" and
                 "Target details withheld. Accept the contract to reveal the IP." or ""
             m.target_hidden = 1
+        elseif tonumber(m.status) == 0 then
+            m.target_ip = "????"
+            local brief = tostring(m.briefing or "")
+            brief = brief:gsub("(Target bank:[^\n%(]*)%([^%)]*%)", "%1(????)")
+            brief = brief:gsub("Target account: #%d+", "Target account: ????")
+            m.briefing = brief
+            m.target_hidden = 1
         end
     end
     for _, m in ipairs(missions) do
