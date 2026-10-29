@@ -5320,8 +5320,23 @@ Tabs["Missions"] = function(container)
         actionBar:SetTall(32)
         actionBar:DockMargin(0, 0, 0, 0)
         reader:SetMultiline(true)
-        reader:SetEditable(false)
         reader:SetVerticalScrollbarEnabled(true)
+        reader._mh_locked_text = ""
+        reader.OnChange = function(self)
+            if self._mh_setting then return end
+            if self:GetValue() == self._mh_locked_text then return end
+            self._mh_setting = true
+            local caret = self:GetCaretPos()
+            self:SetText(self._mh_locked_text or "")
+            self:SetCaretPos(math.min(caret, #(self._mh_locked_text or "")))
+            self._mh_setting = false
+        end
+        local function set_reader_text(txt)
+            reader._mh_setting = true
+            reader._mh_locked_text = tostring(txt or "")
+            reader:SetValue(reader._mh_locked_text)
+            reader._mh_setting = false
+        end
 
         local acceptB = vgui.Create("DButton", actionBar)
         acceptB:SetText("Accept")
@@ -5384,7 +5399,7 @@ Tabs["Missions"] = function(container)
             if locked then
                 headerLbl:SetText("????\nGiver: ????\nTarget: ????   Prize ????   Status Unavailable")
                 giverAvatar:SetVisible(false)
-                reader:SetValue("Hirer unknown. Discover the giver's IP first.")
+                set_reader_text("Hirer unknown. Discover the giver's IP first.")
                 acceptB:SetEnabled(false)
                 abortB:SetEnabled(false)
                 completeB:SetEnabled(false)
@@ -5401,7 +5416,7 @@ Tabs["Missions"] = function(container)
             setup_avatar(giverAvatar, resolve_sender_model(giverName))
             local brief = tostring(m.briefing or "")
             if brief == "" then brief = "No briefing on file." end
-            reader:SetValue(brief)
+            set_reader_text(brief)
             local s = tonumber(m.status)
             acceptB:SetEnabled(s == 0)
             abortB:SetEnabled(s == 1 and tonumber(m.mtype) < 49)
